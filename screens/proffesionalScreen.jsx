@@ -15,11 +15,13 @@ import {
 } from "lucide-react-native";
 import AppBottomTab from "../components/AppBottomTab";
 import { useState } from "react";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { router } from "expo-router";
 import {
     Dimensions,
     Image,
     Platform,
-    SafeAreaView,
+
     ScrollView,
     StatusBar,
     StyleSheet,
@@ -101,7 +103,7 @@ export default function ProfessionalProfileScreen({ onBack, onBook }) {
         <View style={s.header}>
           <TouchableOpacity
             style={s.glassCircleBtn}
-            onPress={onBack}
+            onPress={onBack || (() => router.back())}
             activeOpacity={0.75}
           >
             <ChevronLeft size={sc(20)} color={C.white} strokeWidth={2.5} />
@@ -242,7 +244,7 @@ export default function ProfessionalProfileScreen({ onBack, onBook }) {
 
           <TouchableOpacity
             style={s.bookActionBtn}
-            onPress={onBook}
+            onPress={onBook || (() => router.push("/booking-details"))}
             activeOpacity={0.85}
           >
             <LinearGradient

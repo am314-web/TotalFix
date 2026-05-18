@@ -1,146 +1,185 @@
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-    Briefcase,
-    Calendar,
-    CheckCircle2,
-    FileText,
-    MapPin,
-    SlidersHorizontal,
-    User,
-    XCircle
+  Briefcase,
+  Calendar,
+  CheckCircle2,
+  FileText,
+  MapPin,
+  Play,
+  User,
+  XCircle,
 } from "lucide-react-native";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
-    Dimensions,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Dimensions,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import AppBottomTab from "../components/AppBottomTab";
+import { router } from "expo-router";
+import ProBottomTab from "../components/ProBottomTab";
+import { SESSION_KEY } from "../services/session";
+import { supabase } from "../services/supabase";
+import { createNotificationEvent } from "../services/supabaseBookingService";
 
 const { width, height } = Dimensions.get("window");
 const sc = (n) => (width / 390) * n;
 
-// ─── DESIGN TOKENS ───────────────────────────────────────────
 const C = {
   p1: "#8C7FFF",
   p2: "#5B4CF0",
   p3: "#3D2EC0",
-  p4: "#1B108E",
-  dark: "#150C72",
   white: "#FFFFFF",
-  offWhite: "#F8F7FF",
   inputBg: "#F4F2FF",
   inputBorder: "#E8E5FF",
   labelGray: "#8B8BA7",
   textDark: "#1A1740",
   textMuted: "#B0B0C8",
-  success: "#22C55E",
 };
 
-// ─── HISTORICAL JOBS MOCK DATA ────────────────────────────────
-const HISTORY_DATA = [
-  {
-    id: "JOB-9914",
-    customer: "Alok Mourya",
-    service: "Split AC Jet Service x2",
-    payout: "₹2,648",
-    date: "16 May 2026",
-    time: "14:00 - 15:30",
-    address: "B-402, Skyline Residency, Satellite, Ahmedabad",
-    status: "Completed",
-    type: "Premium Cleaning",
-  },
-  {
-    id: "JOB-9860",
-    customer: "Priya Desai",
-    service: "Window AC Gas Charging",
-    payout: "₹1,200",
-    date: "14 May 2026",
-    time: "11:00 - 12:30",
-    address: "C-101, Green Park, Vastrapur, Ahmedabad",
-    status: "Completed",
-    type: "Gas Refill",
-  },
-  {
-    id: "JOB-9742",
-    customer: "Rajesh Mehta",
-    service: "AC Installation & Wiring",
-    payout: "₹1,850",
-    date: "11 May 2026",
-    time: "16:00 - 18:00",
-    address: "42, Shanti Niketan, Bodakdev, Ahmedabad",
-    status: "Declined",
-    type: "Installation",
-    reason: "Conflict with existing schedule",
-  },
-  {
-    id: "JOB-9611",
-    customer: "Suresh Verma",
-    service: "Complete Compressor Diagnosis",
-    payout: "₹650",
-    date: "08 May 2026",
-    time: "10:00 - 11:30",
-    address: "F-303, Aarohi Crest, South Bopal, Ahmedabad",
-    status: "Cancelled",
-    type: "Diagnostics",
-    reason: "Client cancelled before arrival",
-  },
-];
-
 export default function ProHistoryScreen() {
-  const [activeTab, setActiveTab] = useState("Completed"); // Completed, Declined, All
+  const [activeTab, setActiveTab] = useState("Upcoming");
+  const [jobs, setJobs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoadingId, setActionLoadingId] = useState("");
 
-  // Filter dispatch handler
-  const filteredJobs = HISTORY_DATA.filter((job) => {
-    if (activeTab === "Completed") return job.status === "Completed";
-    if (activeTab === "Declined")
-      return job.status === "Declined" || job.status === "Cancelled";
-    return true; // "All" tab maps everything
+  const toLabelCase = (value) =>
+    String(value || "")
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return "Scheduled date";
+    const parts = String(dateStr).split("-");
+    if (parts.length !== 3) return String(dateStr);
+    const date = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    let channel;
+
+    const load = async () => {
+      try {
+        setLoading(true);
+        const raw = await AsyncStorage.getItem(SESSION_KEY);
+        const session = raw ? JSON.parse(raw) : null;
+        const uid = session?.uid || "";
+
+        if (!uid) {
+          if (mounted) setJobs([]);
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("bookings")
+          .select("*")
+          .eq("professional_id", uid)
+          .in("status", ["accepted", "completed", "rejected"])
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+        if (mounted) setJobs(data || []);
+
+        if (!channel) {
+          channel = supabase
+            .channel(`pro-history-${uid}`)
+            .on(
+              "postgres_changes",
+              { event: "*", schema: "public", table: "bookings", filter: `professional_id=eq.${uid}` },
+              () => load()
+            )
+            .subscribe();
+        }
+      } catch (error) {
+        console.error("History fetch failed:", error);
+        if (mounted) setJobs([]);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    load();
+
+    return () => {
+      mounted = false;
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const filteredJobs = jobs.filter((job) => {
+    if (activeTab === "Upcoming") return job.status === "accepted";
+    if (activeTab === "Completed") return job.status === "completed";
+    return job.status === "rejected";
   });
 
+  const handleDeclineUpcoming = async (job) => {
+    try {
+      setActionLoadingId(String(job.id));
+      const { error } = await supabase
+        .from("bookings")
+        .update({ status: "rejected" })
+        .eq("id", job.id);
+      if (error) throw error;
+
+      await createNotificationEvent({
+        recipientId: job.client_id,
+        eventType: "job_declined",
+        title: "Your booking was declined",
+        body: `Professional declined booking UC-${job.id}.`,
+        bookingId: job.id,
+      });
+
+      setJobs((prev) =>
+        prev.map((x) => (x.id === job.id ? { ...x, status: "rejected" } : x))
+      );
+    } catch (e) {
+      console.error("Decline failed:", e);
+    } finally {
+      setActionLoadingId("");
+    }
+  };
+
   const renderHistoryCard = (job) => {
-    const isSuccess = job.status === "Completed";
+    const isUpcoming = job.status === "accepted";
+    const isCompleted = job.status === "completed";
+    const statusLabel = toLabelCase(job.status);
 
     return (
-      <View key={job.id} style={s.cardOuterWrapper}>
-        <BlurView
-          intensity={Platform.OS === "ios" ? 45 : 95}
-          tint="light"
-          style={s.jobGlassCard}
-        >
-          {/* Card Upper Metric Header */}
+      <View key={String(job.id)} style={s.cardOuterWrapper}>
+        <BlurView intensity={Platform.OS === "ios" ? 45 : 95} tint="light" style={s.jobGlassCard}>
           <View style={s.cardHeaderRow}>
             <View>
               <View style={s.jobTypeTag}>
-                <Text style={s.jobTypeTagText}>{job.type}</Text>
+                <Text style={s.jobTypeTagText}>{statusLabel}</Text>
               </View>
-              <Text style={s.serviceTitleText}>{job.service}</Text>
+              <Text style={s.serviceTitleText}>{toLabelCase(job.service_type)} Service</Text>
               <View style={s.clientMetaRow}>
                 <User size={12} color={C.labelGray} />
-                <Text style={s.clientNameText}>Client: {job.customer}</Text>
+                <Text style={s.clientNameText}>Client: {job.client_id || "Client"}</Text>
               </View>
             </View>
             <View style={s.payoutContainer}>
-              <Text style={s.payoutText}>{job.payout}</Text>
-              <Text style={s.jobIdText}>{job.id}</Text>
+              <Text style={s.payoutText}>#{job.id}</Text>
+              <Text style={s.jobIdText}>UC-{job.id}</Text>
             </View>
           </View>
 
-          {/* Card Central Logistics Matrix */}
           <View style={s.logisticsGroup}>
             <View style={s.logisticItemRow}>
               <View style={s.iconBadgeFrame}>
                 <Calendar size={13} color={C.p2} />
               </View>
               <Text style={s.logisticText}>
-                {job.date} • {job.time}
+                {formatDate(job.scheduled_date)} | {job.scheduled_time || "Time TBD"}
               </Text>
             </View>
             <View style={s.logisticItemRow}>
@@ -148,49 +187,65 @@ export default function ProHistoryScreen() {
                 <MapPin size={13} color={C.p2} />
               </View>
               <Text style={s.logisticText} numberOfLines={1}>
-                {job.address}
+                Address shared by client
               </Text>
             </View>
           </View>
 
           <View style={s.cardDividerLine} />
 
-          {/* Card Semantic Status Bottom Footer */}
           <View style={s.cardStatusFooter}>
-            {isSuccess ? (
+            {isCompleted ? (
               <View style={s.badgeSuccessFrame}>
-                <CheckCircle2
-                  size={14}
-                  color="#047857"
-                  fill="rgba(4, 120, 87, 0.1)"
-                />
-                <Text style={s.badgeSuccessText}>
-                  Payout Settled Successfully
-                </Text>
+                <CheckCircle2 size={14} color="#047857" />
+                <Text style={s.badgeSuccessText}>Job completed successfully</Text>
               </View>
             ) : (
               <View style={s.badgeErrorFrame}>
-                <XCircle
-                  size={14}
-                  color="#B91C1C"
-                  fill="rgba(185, 28, 28, 0.1)"
-                />
+                {isUpcoming ? <CheckCircle2 size={14} color={C.p2} /> : <XCircle size={14} color="#B91C1C" />}
                 <View style={{ flex: 1 }}>
-                  <Text style={s.badgeErrorText}>{job.status}</Text>
-                  {job.reason && (
-                    <Text style={s.reasonNoteText}>Reason: {job.reason}</Text>
-                  )}
+                  <Text style={s.badgeErrorText}>{statusLabel}</Text>
+                  <Text style={s.reasonNoteText}>{job.notes || "No extra notes"}</Text>
                 </View>
               </View>
             )}
-
-            {isSuccess && (
-              <TouchableOpacity style={s.receiptLinkBtn} activeOpacity={0.7}>
-                <FileText size={14} color={C.p2} />
-                <Text style={s.receiptLinkText}>Statement</Text>
-              </TouchableOpacity>
-            )}
           </View>
+          {isUpcoming ? (
+            <View style={s.upcomingActionsRow}>
+              <TouchableOpacity
+                style={s.startBtn}
+                activeOpacity={0.8}
+                onPress={() => router.push("/pro-profile")}
+              >
+                <Play size={14} color="#fff" />
+                <Text style={s.startBtnText}>Start Job</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={s.declineBtn}
+                activeOpacity={0.8}
+                onPress={() => handleDeclineUpcoming(job)}
+                disabled={actionLoadingId === String(job.id)}
+              >
+                <XCircle size={14} color="#fff" />
+                <Text style={s.declineBtnText}>
+                  {actionLoadingId === String(job.id) ? "Declining..." : "Decline Job"}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={s.detailBtn}
+                activeOpacity={0.8}
+                onPress={() =>
+                  router.push({
+                    pathname: "/pro-job-detail",
+                    params: { bookingId: String(job.id) },
+                  })
+                }
+              >
+                <FileText size={14} color={C.p2} />
+                <Text style={s.detailBtnText}>Full Detail</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </BlurView>
       </View>
     );
@@ -198,51 +253,20 @@ export default function ProHistoryScreen() {
 
   return (
     <View style={s.container}>
-      <StatusBar
-        translucent
-        backgroundColor="transparent"
-        barStyle="dark-content"
-      />
-      <LinearGradient
-        colors={["#F4F3FF", "#FDFDFF"]}
-        style={StyleSheet.absoluteFill}
-      />
+      <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
+      <LinearGradient colors={["#F4F3FF", "#FDFDFF"]} style={StyleSheet.absoluteFill} />
 
-      {/* AMBIENT BACKGROUND LAYER CHROMATIC BLOBS */}
-      <View
-        style={[
-          s.glowOrb,
-          {
-            top: -sc(20),
-            right: -sc(40),
-            backgroundColor: "rgba(140, 127, 255, 0.15)",
-          },
-        ]}
-      />
-      <View
-        style={[
-          s.glowOrb,
-          {
-            bottom: height * 0.15,
-            left: -sc(50),
-            backgroundColor: "rgba(91, 76, 240, 0.1)",
-          },
-        ]}
-      />
+      <View style={[s.glowOrb, { top: -sc(20), right: -sc(40), backgroundColor: "rgba(140, 127, 255, 0.15)" }]} />
+      <View style={[s.glowOrb, { bottom: height * 0.15, left: -sc(50), backgroundColor: "rgba(91, 76, 240, 0.1)" }]} />
 
       <SafeAreaView style={{ flex: 1 }}>
-        {/* HEADER BAR APP BAR */}
         <View style={s.header}>
           <Text style={s.headerTitleText}>Job History</Text>
-          <TouchableOpacity style={s.filterBtnFrame} activeOpacity={0.75}>
-            <SlidersHorizontal size={sc(18)} color={C.textDark} />
-          </TouchableOpacity>
         </View>
 
-        {/* CUSTOM SMOOTH SELECTION SEGMENT CONTROL */}
         <View style={s.tabContainer}>
           <View style={s.tabBarBackground}>
-            {["Completed", "Declined", "All Logs"].map((tab) => {
+            {["Upcoming", "Completed", "Declined"].map((tab) => {
               const isActive = activeTab === tab;
               return (
                 <TouchableOpacity
@@ -251,46 +275,36 @@ export default function ProHistoryScreen() {
                   activeOpacity={0.8}
                   style={[s.tabItem, isActive && s.tabItemActive]}
                 >
-                  <Text
-                    style={[s.tabItemText, isActive && s.tabItemTextActive]}
-                  >
-                    {tab}
-                  </Text>
+                  <Text style={[s.tabItemText, isActive && s.tabItemTextActive]}>{tab}</Text>
                 </TouchableOpacity>
               );
             })}
           </View>
         </View>
 
-        {/* CARDS LIST FRAME SCROLL */}
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={s.scrollArea}
-        >
-          {filteredJobs.length > 0 ? (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scrollArea}>
+          {loading ? (
+            <View style={s.emptyStateBox}>
+              <Text style={s.emptyStateTitle}>Loading jobs...</Text>
+            </View>
+          ) : filteredJobs.length > 0 ? (
             filteredJobs.map(renderHistoryCard)
           ) : (
             <View style={s.emptyStateBox}>
               <View style={s.emptyIconWrapper}>
                 <Briefcase size={sc(32)} color={C.textMuted} />
               </View>
-              <Text style={s.emptyStateTitle}>
-                No logs inside {activeTab.toLowerCase()}
-              </Text>
-              <Text style={s.emptyStateSub}>
-                All historical updates matching this categorization matrix show
-                up here automatically.
-              </Text>
+              <Text style={s.emptyStateTitle}>No jobs inside {activeTab.toLowerCase()}</Text>
+              <Text style={s.emptyStateSub}>Live status updates for your jobs will appear here automatically.</Text>
             </View>
           )}
         </ScrollView>
       </SafeAreaView>
-      <AppBottomTab />
+      <ProBottomTab />
     </View>
   );
 }
 
-// ─── LAYOUT METRIC STYLE DEFINITIONS ──────────────────────────
 const s = StyleSheet.create({
   container: { flex: 1 },
   glowOrb: {
@@ -300,8 +314,6 @@ const s = StyleSheet.create({
     borderRadius: sc(130),
     opacity: 0.8,
   },
-
-  // App Bar Configurations
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -316,19 +328,6 @@ const s = StyleSheet.create({
     color: C.textDark,
     letterSpacing: -0.6,
   },
-  filterBtnFrame: {
-    width: sc(42),
-    height: sc(42),
-    borderRadius: 14,
-    backgroundColor: C.white,
-    borderWidth: 1,
-    borderColor: C.inputBorder,
-    justifyContent: "center",
-    alignItems: "center",
-    elevation: 1,
-  },
-
-  // Custom Controlled Segments Tab Bar
   tabContainer: { paddingHorizontal: 24, marginBottom: 15 },
   tabBarBackground: {
     flexDirection: "row",
@@ -338,12 +337,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(232, 229, 255, 0.6)",
   },
-  tabItem: {
-    flex: 1,
-    paddingVertical: 11,
-    alignItems: "center",
-    borderRadius: 15,
-  },
+  tabItem: { flex: 1, paddingVertical: 11, alignItems: "center", borderRadius: 15 },
   tabItemActive: {
     backgroundColor: C.white,
     elevation: 4,
@@ -354,8 +348,6 @@ const s = StyleSheet.create({
   },
   tabItemText: { fontSize: sc(13), fontWeight: "700", color: C.textMuted },
   tabItemTextActive: { color: C.p2, fontWeight: "800" },
-
-  // Premium Luxury Glass Card Architecture
   scrollArea: { paddingHorizontal: 24, paddingBottom: 120, paddingTop: 5 },
   cardOuterWrapper: {
     marginBottom: 15,
@@ -370,11 +362,7 @@ const s = StyleSheet.create({
     shadowRadius: 12,
   },
   jobGlassCard: { padding: 18, backgroundColor: "rgba(255, 255, 255, 0.45)" },
-  cardHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
+  cardHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   jobTypeTag: {
     backgroundColor: "rgba(91, 76, 240, 0.06)",
     paddingHorizontal: 8,
@@ -385,42 +373,13 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(91, 76, 240, 0.1)",
   },
-  jobTypeTagText: {
-    fontSize: 9,
-    fontWeight: "800",
-    color: C.p2,
-    textTransform: "uppercase",
-    letterSpacing: 0.3,
-  },
-  serviceTitleText: {
-    fontSize: sc(15),
-    fontWeight: "900",
-    color: C.textDark,
-    letterSpacing: -0.2,
-  },
-  clientMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 4,
-  },
+  jobTypeTagText: { fontSize: 9, fontWeight: "800", color: C.p2, textTransform: "uppercase", letterSpacing: 0.3 },
+  serviceTitleText: { fontSize: sc(15), fontWeight: "900", color: C.textDark, letterSpacing: -0.2 },
+  clientMetaRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
   clientNameText: { fontSize: sc(13), color: C.labelGray, fontWeight: "600" },
   payoutContainer: { alignItems: "flex-end" },
-  payoutText: {
-    fontSize: sc(16),
-    fontWeight: "900",
-    color: C.textDark,
-    letterSpacing: -0.3,
-  },
-  jobIdText: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: C.textMuted,
-    marginTop: 2,
-    textTransform: "uppercase",
-  },
-
-  // Logistics Alignment Blocks
+  payoutText: { fontSize: sc(16), fontWeight: "900", color: C.textDark, letterSpacing: -0.3 },
+  jobIdText: { fontSize: 10, fontWeight: "700", color: C.textMuted, marginTop: 2, textTransform: "uppercase" },
   logisticsGroup: { gap: 10, marginVertical: 15 },
   logisticItemRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   iconBadgeFrame: {
@@ -433,24 +392,9 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.inputBorder,
   },
-  logisticText: {
-    fontSize: sc(13),
-    color: C.textDark,
-    fontWeight: "600",
-    opacity: 0.85,
-  },
-  cardDividerLine: {
-    height: 1,
-    backgroundColor: "rgba(232, 229, 255, 0.7)",
-    marginBottom: 14,
-  },
-
-  // Footers / Status Badges Configurations
-  cardStatusFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
+  logisticText: { fontSize: sc(13), color: C.textDark, fontWeight: "600", opacity: 0.85 },
+  cardDividerLine: { height: 1, backgroundColor: "rgba(232, 229, 255, 0.7)", marginBottom: 14 },
+  cardStatusFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   badgeSuccessFrame: {
     flexDirection: "row",
     alignItems: "center",
@@ -474,35 +418,49 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#FCA5A5",
     flex: 1,
-    marginRight: 10,
   },
-  badgeErrorText: {
-    color: "#B91C1C",
-    fontWeight: "800",
-    fontSize: sc(11),
-    textTransform: "capitalize",
+  badgeErrorText: { color: "#B91C1C", fontWeight: "800", fontSize: sc(11), textTransform: "capitalize" },
+  reasonNoteText: { color: "#EF4444", fontSize: 10, fontWeight: "600", marginTop: 2 },
+  upcomingActionsRow: {
+    marginTop: 10,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
   },
-  reasonNoteText: {
-    color: "#EF4444",
-    fontSize: 10,
-    fontWeight: "600",
-    marginTop: 2,
-  },
-  receiptLinkBtn: {
+  startBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 6,
+    backgroundColor: C.p2,
+    paddingHorizontal: 12,
     paddingVertical: 8,
-    paddingHorizontal: 10,
+    borderRadius: 10,
   },
-  receiptLinkText: { color: C.p2, fontWeight: "800", fontSize: sc(12) },
-
-  // Fallbacks Empty Handling
-  emptyStateBox: {
-    paddingVertical: height * 0.12,
+  declineBtn: {
+    flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 36,
+    gap: 6,
+    backgroundColor: "#DC2626",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
   },
+  detailBtn: {
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: C.inputBorder,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  startBtnText: { color: "#fff", fontSize: sc(12), fontWeight: "800" },
+  declineBtnText: { color: "#fff", fontSize: sc(12), fontWeight: "800" },
+  detailBtnText: { color: C.p2, fontSize: sc(12), fontWeight: "800" },
+  emptyStateBox: { paddingVertical: height * 0.12, alignItems: "center", paddingHorizontal: 36 },
   emptyIconWrapper: {
     width: sc(64),
     height: sc(64),
@@ -515,12 +473,5 @@ const s = StyleSheet.create({
     borderColor: C.inputBorder,
   },
   emptyStateTitle: { fontSize: sc(16), fontWeight: "800", color: C.textDark },
-  emptyStateSub: {
-    fontSize: sc(12),
-    color: C.labelGray,
-    textAlign: "center",
-    marginTop: 6,
-    lineHeight: 18,
-    fontWeight: "500",
-  },
+  emptyStateSub: { fontSize: sc(12), color: C.labelGray, textAlign: "center", marginTop: 6, lineHeight: 18, fontWeight: "500" },
 });

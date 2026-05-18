@@ -12,6 +12,7 @@ import {
   Switch,
   TextInput,
   Platform,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
@@ -33,6 +34,11 @@ import {
   X,
 } from "lucide-react-native";
 import AppBottomTab from "../components/AppBottomTab";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { router } from "expo-router";
+import { signOut } from "firebase/auth";
+import { auth } from "../services/firebase";
+import { SESSION_KEY } from "../services/session";
 
 const { width, height } = Dimensions.get("window");
 const sc = (n) => (width / 390) * n;
@@ -57,6 +63,17 @@ const C = {
 export default function ProProfileEcosystemScreen() {
   const [currentView, setCurrentView] = useState("main"); // main, bank, documents, skills
   const [isDarkMode, setIsDarkMode] = useState(false);
+
+  const handleLogout = async () => {
+    try {
+      await AsyncStorage.removeItem(SESSION_KEY);
+      await signOut(auth);
+      router.replace("/");
+    } catch (error) {
+      console.error("Error during pro profile logout:", error);
+      Alert.alert("Logout Failed", "An error occurred during logout. Please try again.");
+    }
+  };
 
   // --- BANK INFO FORM STATES ---
   const [accountName, setAccountName] = useState("Rahul Sharma");
@@ -161,7 +178,7 @@ export default function ProProfileEcosystemScreen() {
       </View>
 
       {/* Termination Action: Logout */}
-      <TouchableOpacity style={[s.menuItemWrapper, { marginTop: sc(24) }]} activeOpacity={0.85} onPress={() => alert("Session terminated safely.")}>
+      <TouchableOpacity style={[s.menuItemWrapper, { marginTop: sc(24) }]} activeOpacity={0.85} onPress={handleLogout}>
         <BlurView intensity={85} tint="light" style={s.menuGlassItem}>
           <View style={[s.menuIconFrame, { backgroundColor: "rgba(239, 68, 68, 0.08)" }]}><LogOut size={sc(16)} color="#EF4444" /></View>
           <Text style={[s.menuItemTitle, { color: "#EF4444" }]}>Logout Profile Session</Text>

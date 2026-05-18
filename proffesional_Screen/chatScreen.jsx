@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -8,321 +8,302 @@ import {
   ScrollView,
   StatusBar,
   Dimensions,
-  Image,
   TextInput,
   Platform,
+  KeyboardAvoidingView,
+  Image,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
-import {
-  ChevronLeft,
-  Search,
-  MessageCircle,
-  Phone,
-  Info,
-  Plus,
-  Smile,
-  Send,
-  Check,
-  CheckCheck,
-  Mic,
-  Play,
-  Image as ImageIcon,
-  User,
-  MapPin,
-} from "lucide-react-native";
-import AppBottomTab from "../components/AppBottomTab";
+import { ChevronLeft, Send } from "lucide-react-native";
+import { useLocalSearchParams } from "expo-router";
+import ProBottomTab from "../components/ProBottomTab";
+import { SESSION_KEY } from "../services/session";
+import { supabase } from "../services/supabase";
+import { createNotificationEvent } from "../services/supabaseBookingService";
+import { getUserAvatar } from "../services/profileAvatarService";
 
-const { width, height } = Dimensions.get("window");
+const { width } = Dimensions.get("window");
 const sc = (n) => (width / 390) * n;
 
-// ─── DESIGN TOKENS ───────────────────────────────────────────
 const C = {
   p1: "#8C7FFF",
   p2: "#5B4CF0",
-  p3: "#3D2EC0",
-  p4: "#1B108E",
-  dark: "#150C72",
-  white: "#FFFFFF",
-  offWhite: "#F8F7FF",
-  inputBg: "#F4F2FF",
-  inputBorder: "#E8E5FF",
-  labelGray: "#8B8BA7",
   textDark: "#1A1740",
-  textMuted: "#B0B0C8",
+  labelGray: "#8B8BA7",
+  inputBorder: "#E8E5FF",
 };
-
-// ─── PROVIDER-SIDE MOCK CHAT LIST ────────────────────────────
-const CHATS = [
-  {
-    id: "1",
-    name: "Alok Mourya",
-    role: "Client • Order #AC-9921",
-    avatar: "https://i.pravatar.cc/150?u=alok",
-    lastMessage: "Please let me know once you cross the Iscon cross roads...",
-    time: "2 min",
-    unread: 1,
-    online: true,
-  },
-  {
-    id: "2",
-    name: "Amit Patel",
-    role: "Client • Order #AC-9874",
-    avatar: "https://i.pravatar.cc/150?u=amit",
-    lastMessage: "The outdoor unit is installed on the balcony grill.",
-    time: "45 min",
-    unread: 0,
-    online: false,
-  },
-  {
-    id: "3",
-    name: "Support Desk",
-    role: "Platform Ops Compliance",
-    avatar: "https://i.pravatar.cc/150?u=support",
-    lastMessage: "Your payout for this week has been verified and released.",
-    time: "2 hours",
-    unread: 0,
-    online: true,
-  },
-];
-
-// ─── ACTIVE CONVERSATION STATE WITH ALOK MOURYA ──────────────
-const CONVERSATION = [
-  { id: "m1", type: "received", text: "Hello Rahul, are you on your way for the AC service? Split AC Jet cleaning.", time: "2:15 PM" },
-  { id: "m2", type: "sent", text: "Yes Alok, loading the jet pump equipment. Will leave from Vastrapur hub in 5 mins.", time: "2:18 PM", status: "read" },
-  { id: "m3", type: "sent", isAudio: true, duration: "00:45", time: "2:19 PM", status: "read" },
-  { id: "m4", type: "received", text: "Perfect. Please let me know once you cross the Iscon cross roads, thank you!", time: "2:22 PM" },
-];
+const CHAT_SEEN_KEY_PREFIX = "chat_seen_pro_";
 
 export default function ChatScreenApp() {
-  const [viewState, setViewState] = useState("inbox"); // "inbox" or "conversation"
-  const [activeUser, setActiveUser] = useState(null);
-  const [inputText, setInputText] = useState("");
+  const params = useLocalSearchParams();
+  const routeBookingId = params?.bookingId ? Number(params.bookingId) : null;
 
-  // ─── VIEW 1: MESSAGES FEED (INBOX) ─────────────────────────
-  const renderInboxScreen = () => (
-    <SafeAreaView style={{ flex: 1 }}>
-      {/* HEADER */}
-      <View style={s.inboxHeader}>
-        <Text style={s.largeTitle}>Client Chats</Text>
-        <TouchableOpacity style={s.circleBarBtn} activeOpacity={0.75}>
-          <Search size={sc(20)} color={C.textDark} strokeWidth={2.2} />
-        </TouchableOpacity>
-      </View>
+  const [uid, setUid] = useState("");
+  const [inbox, setInbox] = useState([]);
+  const [active, setActive] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [avatarMap, setAvatarMap] = useState({});
+  const [unreadMap, setUnreadMap] = useState({});
 
-      {/* CHATS ITERATION SCROLL */}
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.inboxScroll}>
-        {CHATS.map((chat) => (
-          <TouchableOpacity
-            key={chat.id}
-            activeOpacity={0.85}
-            onPress={() => {
-              setActiveUser(chat);
-              setViewState("conversation");
-            }}
-            style={s.chatRowWrapper}
-          >
-            <BlurView intensity={Platform.OS === 'ios' ? 45 : 95} tint="light" style={s.inboxGlassCard}>
-              <View style={s.avatarContainer}>
-                <Image source={{ uri: chat.avatar }} style={s.feedAvatar} />
-                {chat.online && <View style={s.onlineIndicator} />}
-              </View>
+  const getSeenKey = (userId) => `${CHAT_SEEN_KEY_PREFIX}${userId}`;
 
-              <View style={s.chatBodyDetails}>
-                <View style={s.chatMetaRow}>
-                  <Text style={s.profileNameText} numberOfLines={1}>{chat.name}</Text>
-                  <Text style={s.metaTimeText}>{chat.time}</Text>
-                </View>
-                <Text style={s.proRoleText}>{chat.role}</Text>
-                <Text style={s.lastMessageSnippet} numberOfLines={1}>{chat.lastMessage}</Text>
-              </View>
+  const loadSeenMap = async (userId) => {
+    try {
+      const raw = await AsyncStorage.getItem(getSeenKey(userId));
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  };
 
-              {chat.unread > 0 && (
-                <LinearGradient colors={[C.p1, C.p2]} style={s.unreadBadge}>
-                  <Text style={s.unreadCountText}>{chat.unread}</Text>
-                </LinearGradient>
-              )}
-            </BlurView>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-    </SafeAreaView>
-  );
+  const saveSeenMap = async (userId, seenMap) => {
+    try {
+      await AsyncStorage.setItem(getSeenKey(userId), JSON.stringify(seenMap || {}));
+    } catch {}
+  };
 
-  // ─── VIEW 2: ACTIVE CLIENT CONVERSATION CONSOLE ─────────────
-  const renderConversationScreen = () => (
-    <SafeAreaView style={{ flex: 1 }}>
-      {/* HEADER BAR PANEL */}
-      <View style={s.convoHeader}>
-        <TouchableOpacity style={s.iconHeaderBtn} onPress={() => setViewState("inbox")} activeOpacity={0.75}>
-          <ChevronLeft size={sc(22)} color={C.textDark} strokeWidth={2.5} />
-        </TouchableOpacity>
+  useEffect(() => {
+    let mounted = true;
+    let channel;
 
-        <View style={s.headerMetaProfile}>
-          <Text style={s.convoHeaderTitle}>{activeUser?.name || "Alok Mourya"}</Text>
-          <Text style={s.convoHeaderSub}>{activeUser?.role || "Client • Order #AC-9921"}</Text>
-        </View>
+    const load = async () => {
+      const raw = await AsyncStorage.getItem(SESSION_KEY);
+      const session = raw ? JSON.parse(raw) : null;
+      const userId = session?.uid || "";
+      if (!userId) return;
+      if (mounted) setUid(userId);
 
-        <TouchableOpacity style={s.iconHeaderBtn} activeOpacity={0.75}>
-          <Phone size={sc(18)} color={C.textDark} strokeWidth={2.2} />
-        </TouchableOpacity>
-      </View>
+      const { data: bookings } = await supabase
+        .from("bookings")
+        .select("id,professional_id,client_id,service_type,status,scheduled_date,scheduled_time")
+        .eq("professional_id", userId)
+        .in("status", ["accepted", "completed"])
+        .order("created_at", { ascending: false });
 
-      {/* MESSAGE CONSOLE TRAIL FEED */}
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.convoScrollArea}>
-        <View style={s.dateIndicatorWrap}>
-          <BlurView intensity={50} tint="light" style={s.datePill}>
-            <Text style={s.datePillText}>Active Booking Thread</Text>
-          </BlurView>
-        </View>
+      const rawList = bookings || [];
+      const clientIds = Array.from(new Set(rawList.map((b) => b.client_id).filter(Boolean)));
+      let clientNameMap = {};
+      if (clientIds.length > 0) {
+        const { data: profileRows } = await supabase
+          .from("profiles")
+          .select("id,name")
+          .in("id", clientIds);
+        for (const p of profileRows || []) {
+          clientNameMap[p.id] = p.name || "Client";
+        }
+      }
 
-        {CONVERSATION.map((msg) => {
-          const isSent = msg.type === "sent";
-          return (
-            <View key={msg.id} style={[s.msgBubbleWrapper, isSent ? s.msgAlignRight : s.msgAlignLeft]}>
-              {msg.isAudio ? (
-                /* VOICE AUDIOPACK HOUSING */
-                <BlurView intensity={90} tint="light" style={s.audioNodeCard}>
-                  <TouchableOpacity style={s.audioPlayBtn}>
-                    <LinearGradient colors={[C.p1, C.p2]} style={s.audioPlayGrad}>
-                      <Play size={12} color={C.white} fill={C.white} style={{ marginLeft: 2 }} />
-                    </LinearGradient>
-                  </TouchableOpacity>
-                  <View style={s.waveContainer}>
-                    {[4, 18, 12, 24, 8, 16, 22, 10, 14, 6, 20, 12, 16, 4, 10].map((h, idx) => (
-                      <View key={idx} style={[s.waveBar, { height: sc(h) }]} />
-                    ))}
-                  </View>
-                  <Text style={s.audioDurationText}>{msg.duration}</Text>
-                </BlurView>
-              ) : (
-                /* STANDALONE TEXT BUBBLE */
-                <View style={[s.msgTextBubble, isSent ? s.bubbleSentBg : s.bubbleReceivedBg]}>
-                  <Text style={[s.msgBodyText, isSent ? s.textWhiteColor : s.textDarkColor]}>
-                    {msg.text}
-                  </Text>
-                </View>
-              )}
-              <View style={[s.msgTimestampRow, isSent && { justifyContent: "flex-end" }]}>
-                <Text style={s.msgTimestampText}>{msg.time}</Text>
-                {isSent && msg.status === "read" && <CheckCheck size={14} color={C.p2} style={{ marginLeft: 4 }} />}
-              </View>
-            </View>
-          );
-        })}
-      </ScrollView>
+      const list = rawList.map((b) => ({
+        bookingId: b.id,
+        peerId: b.client_id,
+        title: clientNameMap[b.client_id] || "Client",
+        subtitle: `${b.scheduled_date || "Date"} | ${b.scheduled_time || "Time"}`,
+      }));
 
-      {/* DOCK BAR KEYBOARD INPUT CONSOLE */}
-      <View style={s.inputConsoleDock}>
-        <BlurView intensity={Platform.OS === 'ios' ? 45 : 95} tint="light" style={s.consoleGlassFrame}>
-          <TouchableOpacity style={s.consoleActionBtn} activeOpacity={0.7}>
-            <Plus size={sc(20)} color={C.p2} strokeWidth={2.5} />
-          </TouchableOpacity>
+      const ids = rawList.map((b) => b.id);
+      let incomingLatestMap = {};
+      if (ids.length > 0) {
+        const { data: incomingRows } = await supabase
+          .from("chat_messages")
+          .select("booking_id,created_at,sender_id")
+          .in("booking_id", ids)
+          .neq("sender_id", userId)
+          .order("created_at", { ascending: false });
+        for (const row of incomingRows || []) {
+          if (!incomingLatestMap[row.booking_id]) incomingLatestMap[row.booking_id] = row.created_at;
+        }
+      }
 
-          <TextInput
-            placeholder="Send update to client..."
-            placeholderTextColor={C.textMuted}
-            value={inputText}
-            onChangeText={setInputText}
-            style={s.textEntryBar}
-          />
+      const seenMap = await loadSeenMap(userId);
+      const nextUnreadMap = {};
+      for (const row of list) {
+        const latestIncoming = incomingLatestMap[row.bookingId];
+        const seenAt = seenMap[String(row.bookingId)];
+        nextUnreadMap[String(row.bookingId)] = Boolean(
+          latestIncoming && (!seenAt || new Date(latestIncoming).getTime() > new Date(seenAt).getTime())
+        );
+      }
 
-          <TouchableOpacity style={s.consoleActionBtn} activeOpacity={0.7}>
-            <ImageIcon size={sc(18)} color={C.labelGray} strokeWidth={2} />
-          </TouchableOpacity>
+      if (mounted) {
+        const map = {};
+        for (const row of list) {
+          map[row.peerId] = await getUserAvatar(row.peerId, "client");
+        }
+        setAvatarMap(map);
+        setInbox(list);
+        setUnreadMap(nextUnreadMap);
+        if (routeBookingId) {
+          const found = list.find((x) => x.bookingId === routeBookingId);
+          if (found) setActive(found);
+        }
+      }
+    };
 
-          {inputText.trim().length > 0 ? (
-            <TouchableOpacity style={s.sendExecutionBtn} activeOpacity={0.8}>
-              <LinearGradient colors={[C.p1, C.p2]} style={s.sendBtnGrad}>
-                <Send size={14} color={C.white} />
-              </LinearGradient>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={s.consoleActionBtn} activeOpacity={0.7}>
-              <Mic size={sc(20)} color={C.p2} strokeWidth={2} />
-            </TouchableOpacity>
-          )}
-        </BlurView>
-      </View>
-    </SafeAreaView>
-  );
+    load();
+    channel = supabase
+      .channel("chat-pro-inbox-updates")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages" }, () => load())
+      .subscribe();
+    return () => {
+      mounted = false;
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [routeBookingId]);
+
+  useEffect(() => {
+    if (!active?.bookingId) return;
+
+    let mounted = true;
+    let channel;
+
+    const loadThread = async () => {
+      const { data } = await supabase
+        .from("chat_messages")
+        .select("id,booking_id,sender_id,receiver_id,message,created_at")
+        .eq("booking_id", active.bookingId)
+        .order("created_at", { ascending: true });
+      if (mounted) setMessages(data || []);
+    };
+
+    loadThread();
+
+    channel = supabase
+      .channel(`chat-pro-${active.bookingId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "chat_messages", filter: `booking_id=eq.${active.bookingId}` },
+        () => loadThread()
+      )
+      .subscribe();
+
+    return () => {
+      mounted = false;
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [active?.bookingId]);
+
+  useEffect(() => {
+    const markSeen = async () => {
+      if (!uid || !active?.bookingId) return;
+      const seenMap = await loadSeenMap(uid);
+      const nextSeenMap = {
+        ...seenMap,
+        [String(active.bookingId)]: new Date().toISOString(),
+      };
+      await saveSeenMap(uid, nextSeenMap);
+      setUnreadMap((prev) => ({ ...prev, [String(active.bookingId)]: false }));
+    };
+    markSeen();
+  }, [active?.bookingId, uid]);
+
+  const sendMessage = async () => {
+    const text = input.trim();
+    if (!text || !uid || !active?.bookingId || !active?.peerId) return;
+
+    const { error } = await supabase.from("chat_messages").insert([
+      {
+        booking_id: active.bookingId,
+        sender_id: uid,
+        receiver_id: active.peerId,
+        message: text,
+      },
+    ]);
+
+    if (!error) {
+      await createNotificationEvent({
+        recipientId: active.peerId,
+        eventType: "chat_message",
+        title: "New message from professional",
+        body: text,
+        bookingId: active.bookingId,
+      });
+      setInput("");
+    }
+  };
 
   return (
-    <View style={s.container}>
+    <View style={{ flex: 1 }}>
       <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
       <LinearGradient colors={["#F4F3FF", "#FDFDFF"]} style={StyleSheet.absoluteFill} />
 
-      {/* AMBIENT RADIAL GLASS BLOBS */}
-      <View style={[s.ambientOrb, { top: -sc(40), left: -sc(40), backgroundColor: "rgba(140, 127, 255, 0.14)" }]} />
-      <View style={[s.ambientOrb, { bottom: height * 0.2, right: -sc(60), backgroundColor: "rgba(91, 76, 240, 0.1)" }]} />
-
-      {viewState === "inbox" ? renderInboxScreen() : renderConversationScreen()}
-      <AppBottomTab />
+      {!active ? (
+        <SafeAreaView style={{ flex: 1 }}>
+          <View style={s.header}><Text style={s.title}>Client Chats</Text></View>
+          <ScrollView contentContainerStyle={s.scroll}>
+            {inbox.map((item) => (
+              <TouchableOpacity key={String(item.bookingId)} style={s.row} onPress={() => setActive(item)} activeOpacity={0.8}>
+                <Image source={{ uri: avatarMap[item.peerId] }} style={s.avatar} />
+                <View style={{ flex: 1 }}>
+                <Text style={s.rowTitle}>{item.title}</Text>
+                <Text style={s.rowSub}>{item.subtitle}</Text>
+                </View>
+                {unreadMap[String(item.bookingId)] ? <View style={s.unreadDot} /> : null}
+              </TouchableOpacity>
+            ))}
+            {inbox.length === 0 ? <Text style={s.empty}>No accepted bookings for chat yet.</Text> : null}
+          </ScrollView>
+        </SafeAreaView>
+      ) : (
+        <SafeAreaView style={{ flex: 1 }}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+          <View style={s.topRow}>
+            <TouchableOpacity onPress={() => setActive(null)} style={s.backBtn}><ChevronLeft size={20} color={C.textDark} /></TouchableOpacity>
+            <Image source={{ uri: avatarMap[active?.peerId] }} style={s.headerAvatar} />
+            <Text style={s.topTitle}>{active?.title || "Chat"}</Text>
+            <View style={{ width: 40 }} />
+          </View>
+          <ScrollView contentContainerStyle={s.chatScroll}>
+            {messages.map((m) => {
+              const mine = m.sender_id === uid;
+              return (
+                <View key={String(m.id)} style={[s.msgWrap, mine ? s.right : s.left]}>
+                  <View style={[s.msgBubble, mine ? s.sent : s.received]}>
+                    <Text style={[s.msgTxt, mine && { color: "#fff" }]}>{m.message}</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </ScrollView>
+          <View style={s.inputRow}>
+            <TextInput value={input} onChangeText={setInput} placeholder="Type message" placeholderTextColor={C.labelGray} style={s.input} />
+            <TouchableOpacity style={s.sendBtn} onPress={sendMessage} activeOpacity={0.8}>
+              <LinearGradient colors={[C.p1, C.p2]} style={s.sendGrad}><Send size={14} color="#fff" /></LinearGradient>
+            </TouchableOpacity>
+          </View>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      )}
+      <ProBottomTab />
     </View>
   );
 }
 
-// ─── ARCHITECTURAL CORE DESIGN SYSTEM MAPPINGS ───────────────
 const s = StyleSheet.create({
-  container: { flex: 1 },
-  ambientOrb: { position: "absolute", width: sc(280), height: sc(280), borderRadius: sc(140) },
-  
-  // INBOX CONSOLE LAYOUT
-  inboxHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 24, paddingTop: Platform.OS === 'ios' ? 10 : 20, marginBottom: 15 },
-  largeTitle: { fontSize: sc(26), fontWeight: "900", color: C.textDark, letterSpacing: -0.6 },
-  circleBarBtn: { width: sc(40), height: sc(40), borderRadius: 14, backgroundColor: C.white, borderWidth: 1, borderColor: C.inputBorder, justifyContent: "center", alignItems: "center", elevation: 1 },
-  inboxScroll: { paddingHorizontal: 24, paddingBottom: 120, paddingTop: 5 },
-  chatRowWrapper: { marginBottom: 14, borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.7)', elevation: 3, shadowColor: C.p3, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 12 },
-  inboxGlassCard: { flexDirection: "row", padding: 16, backgroundColor: "rgba(255, 255, 255, 0.45)", alignItems: "center" },
-  avatarContainer: { position: "relative" },
-  feedAvatar: { width: sc(52), height: sc(52), borderRadius: 18, backgroundColor: C.inputBg, borderWidth: 1, borderColor: C.inputBorder },
-  onlineIndicator: { position: "absolute", bottom: -2, right: -2, width: 14, height: 14, borderRadius: 7, backgroundColor: C.success, borderWidth: 2.5, borderColor: C.white },
-  chatBodyDetails: { flex: 1, marginLeft: 14, marginRight: 8 },
-  chatMetaRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  profileNameText: { fontSize: sc(15), fontWeight: "800", color: C.textDark, flex: 1, marginRight: 10, letterSpacing: -0.1 },
-  metaTimeText: { fontSize: sc(11), color: C.labelGray, fontWeight: "700" },
-  proRoleText: { fontSize: sc(11), fontWeight: "800", color: C.p2, textTransform: "uppercase", marginTop: 2, letterSpacing: 0.3 },
-  lastMessageSnippet: { fontSize: sc(13), color: C.labelGray, marginTop: 4, fontWeight: "600" },
-  unreadBadge: { width: 20, height: 20, borderRadius: 10, justifyContent: "center", alignItems: "center" },
-  unreadCountText: { color: C.white, fontSize: 10, fontWeight: "900" },
-
-  // ACTIVE FEED WINDOW ARCHITECTURE
-  convoHeader: { flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "rgba(232, 229, 255, 0.6)" },
-  iconHeaderBtn: { width: sc(40), height: sc(40), borderRadius: 12, justifyContent: "center", alignItems: "center" },
-  headerMetaProfile: { flex: 1, alignItems: "center", paddingHorizontal: 10 },
-  convoHeaderTitle: { fontSize: sc(16), fontWeight: "800", color: C.textDark, letterSpacing: -0.2 },
-  convoHeaderSub: { fontSize: sc(11), color: C.labelGray, fontWeight: "700", textTransform: "uppercase", marginTop: 2, letterSpacing: 0.3 },
-  convoScrollArea: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 140 },
-  dateIndicatorWrap: { alignItems: "center", marginBottom: 24 },
-  datePill: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 12, overflow: "hidden", backgroundColor: "rgba(255,255,255,0.65)", borderWidth: 1, borderColor: "rgba(255,255,255,0.5)" },
-  datePillText: { fontSize: sc(11), color: C.p2, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.5 },
-  
-  // MESSAGE BUBBLES
-  msgBubbleWrapper: { maxWidth: "80%", marginBottom: 18 },
-  msgAlignLeft: { alignSelf: "flex-start" },
-  msgAlignRight: { alignSelf: "flex-end" },
-  msgTextBubble: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 20 },
-  bubbleReceivedBg: { backgroundColor: C.white, borderTopLeftRadius: 4, borderWidth: 1, borderColor: C.inputBorder },
-  bubbleSentBg: { backgroundColor: C.p2, borderTopRightRadius: 4 },
-  msgBodyText: { fontSize: sc(14), lineHeight: sc(21), fontWeight: "600" },
-  textWhiteColor: { color: C.white },
-  textDarkColor: { color: C.textDark },
-  msgTimestampRow: { flexDirection: "row", alignItems: "center", marginTop: 4, paddingHorizontal: 4 },
-  msgTimestampText: { fontSize: sc(10), color: C.labelGray, fontWeight: "600" },
-
-  // AUDIO RECORDING METADATA INTERFACE
-  audioNodeCard: { flexDirection: "row", alignItems: "center", padding: 12, borderRadius: 20, borderTopLeftRadius: 4, backgroundColor: "rgba(255,255,255,0.65)", borderWidth: 1, borderColor: "rgba(255,255,255,0.7)", overflow: "hidden" },
-  audioPlayBtn: { width: 32, height: 32, borderRadius: 16, overflow: "hidden" },
-  audioPlayGrad: { flex: 1, justifyContent: "center", alignItems: "center" },
-  waveContainer: { flexDirection: "row", alignItems: "center", gap: 3, marginHorizontal: 12, height: 30 },
-  waveBar: { width: 2, backgroundColor: C.p2, borderRadius: 1 },
-  audioDurationText: { fontSize: sc(11), color: C.textDark, fontWeight: "800" },
-
-  // SYSTEM CONTROL CONSOLE BAR
-  inputConsoleDock: { position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: 20, paddingBottom: Platform.OS === 'ios' ? 35 : 20, paddingTop: 12, backgroundColor: "transparent" },
-  consoleGlassFrame: { flexDirection: "row", alignItems: "center", padding: 6, borderRadius: 22, backgroundColor: "rgba(255, 255, 255, 0.65)", borderWidth: 1, borderColor: "rgba(255,255,255,0.8)" },
-  consoleActionBtn: { width: sc(36), height: sc(36), justifyContent: "center", alignItems: "center" },
-  textEntryBar: { flex: 1, height: sc(40), paddingHorizontal: 10, fontSize: sc(14), color: C.textDark, fontWeight: "600" },
-  sendExecutionBtn: { width: sc(36), height: sc(36), borderRadius: 12, overflow: "hidden" },
-  sendBtnGrad: { flex: 1, justifyContent: "center", alignItems: "center" }
+  header: { paddingHorizontal: 20, paddingTop: Platform.OS === "ios" ? 8 : 20, paddingBottom: 12 },
+  title: { fontSize: sc(24), fontWeight: "900", color: C.textDark },
+  scroll: { paddingHorizontal: 20, paddingBottom: 110, gap: 10 },
+  row: { backgroundColor: "rgba(255,255,255,0.8)", borderWidth: 1, borderColor: C.inputBorder, borderRadius: 14, padding: 12, flexDirection: "row", gap: 10, alignItems: "center" },
+  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#eee" },
+  headerAvatar: { width: 30, height: 30, borderRadius: 15, marginRight: 8 },
+  rowTitle: { fontSize: sc(13), fontWeight: "800", color: C.textDark },
+  rowSub: { fontSize: sc(11), color: C.labelGray, marginTop: 2 },
+  empty: { color: C.labelGray, textAlign: "center", marginTop: 20, fontWeight: "700" },
+  topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingTop: Platform.OS === "ios" ? 8 : 20, paddingBottom: 10 },
+  backBtn: { width: 40, height: 40, justifyContent: "center", alignItems: "center" },
+  topTitle: { fontSize: sc(14), fontWeight: "800", color: C.textDark, flex: 1, textAlign: "center" },
+  chatScroll: { paddingHorizontal: 16, paddingBottom: 90 },
+  msgWrap: { marginBottom: 10, maxWidth: "80%" },
+  left: { alignSelf: "flex-start" },
+  right: { alignSelf: "flex-end" },
+  msgBubble: { paddingHorizontal: 12, paddingVertical: 9, borderRadius: 12 },
+  received: { backgroundColor: "#fff", borderWidth: 1, borderColor: C.inputBorder },
+  sent: { backgroundColor: C.p2 },
+  msgTxt: { color: C.textDark, fontWeight: "600" },
+  inputRow: { paddingHorizontal: 12, paddingBottom: 86, paddingTop: 8, flexDirection: "row", alignItems: "center", gap: 8 },
+  input: { flex: 1, height: 46, borderRadius: 12, borderWidth: 1, borderColor: C.inputBorder, backgroundColor: "#fff", paddingHorizontal: 12, color: C.textDark },
+  sendBtn: { width: 44, height: 44, borderRadius: 12, overflow: "hidden" },
+  sendGrad: { flex: 1, alignItems: "center", justifyContent: "center" },
+  unreadDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: "#2563EB" },
 });

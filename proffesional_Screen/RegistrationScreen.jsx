@@ -1,5 +1,6 @@
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
+import * as ImagePicker from "expo-image-picker";
 import {
     Briefcase,
     CheckCircle2,
@@ -8,13 +9,16 @@ import {
     FileText,
     Mail,
     Phone,
+    Power,
     ShieldAlert,
     UploadCloud,
     User,
     Wrench
 } from "lucide-react-native";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+    ActivityIndicator,
+    Alert,
     Dimensions,
     Platform,
     SafeAreaView,
@@ -26,6 +30,17 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { router } from "expo-router";
+import {
+  completeProfessionalOnboarding,
+  createProfessionalRegistrationLog,
+  fetchProfessionalRegistrationLogs,
+  fetchProfessionalRegistrationSnapshot,
+  uploadProfessionalDocument,
+} from "../services/professionalAuthService";
+import { supabase } from "../services/supabase";
+import { SESSION_KEY } from "../services/session";
 
 const { width, height } = Dimensions.get("window");
 const sc = (n) => (width / 390) * n;
@@ -50,6 +65,12 @@ const C = {
 
 export default function ProfessionalRegisterScreen() {
   const [currentStep, setCurrentStep] = useState(1); // 1: Profile Details, 2: Document Verification
+  const [submitting, setSubmitting] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [registrationDone, setRegistrationDone] = useState(false);
+  const [apiSnapshot, setApiSnapshot] = useState(null);
+  const [apiLogs, setApiLogs] = useState([]);
+  const [preloadLogs, setPreloadLogs] = useState([]);
 
   // Form Local States
   const [name, setName] = useState("");
@@ -61,6 +82,9 @@ export default function ProfessionalRegisterScreen() {
   // Document Upload Mock States
   const [aadhaarStatus, setAadhaarStatus] = useState("empty"); // empty, uploading, done
   const [certStatus, setCertStatus] = useState("empty");
+  const [aadhaarUrl, setAadhaarUrl] = useState("");
+  const [certificateUrl, setCertificateUrl] = useState("");
+  const [sessionUserId, setSessionUserId] = useState("");
 
   const servicesList = [
     "AC Repair",
@@ -70,15 +94,247 @@ export default function ProfessionalRegisterScreen() {
     "Painting",
   ];
 
-  const handleSimulateUpload = (type) => {
-    if (type === "aadhaar") {
-      setAadhaarStatus("uploading");
-      setTimeout(() => setAadhaarStatus("done"), 1500);
-    } else {
-      setCertStatus("uploading");
-      setTimeout(() => setCertStatus("done"), 1500);
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      await AsyncStorage.removeItem(SESSION_KEY);
+      router.replace("/login");
+    } catch (error) {
+      Alert.alert("Logout Failed", error?.message || "Could not logout. Please try again.");
     }
   };
+
+  const handlePickAndUploadDocument = async (type) => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission needed", "Please allow photo access to upload documents.");
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets?.length) return;
+
+      if (!sessionUserId) {
+        throw new Error("Professional session missing. Please login again.");
+      }
+
+      const uri = result.assets[0]?.uri;
+      if (!uri) throw new Error("Selected file URI is invalid.");
+
+      if (type === "aadhaar") setAadhaarStatus("uploading");
+      else setCertStatus("uploading");
+
+      const uploadedUrl = await uploadProfessionalDocument(
+        uri,
+        sessionUserId,
+        type === "aadhaar" ? "aadhaar" : "certificate"
+      );
+
+      if (type === "aadhaar") {
+        setAadhaarUrl(uploadedUrl || "");
+        setAadhaarStatus("done");
+      } else {
+        setCertificateUrl(uploadedUrl || "");
+        setCertStatus("done");
+      }
+    } catch (error) {
+      if (type === "aadhaar") setAadhaarStatus("empty");
+      else setCertStatus("empty");
+      Alert.alert("Upload Failed", error?.message || "Could not upload document.");
+    }
+  };
+
+  useEffect(() => {
+    const bootstrapProfessionalSession = async () => {
+      try {
+        setProfileLoading(true);
+        const rawSession = await AsyncStorage.getItem(SESSION_KEY);
+        if (!rawSession) return;
+        const session = JSON.parse(rawSession);
+        if (session?.role !== "professional") return;
+        if (!session?.uid) return;
+
+        setSessionUserId(session.uid);
+        if (session?.onboardingComplete) {
+          router.replace("/pro-dashboard");
+          return;
+        }
+
+        const snapshot = await fetchProfessionalRegistrationSnapshot(session.uid);
+        const logs = await fetchProfessionalRegistrationLogs(session.uid);
+        setPreloadLogs(logs);
+        if (snapshot?.profile?.name) setName(snapshot.profile.name);
+        if (snapshot?.professionalProfile?.full_name) setName(snapshot.professionalProfile.full_name);
+
+        if (snapshot?.professionalProfile?.email) setEmail(snapshot.professionalProfile.email);
+        else if (session?.email) setEmail(session.email);
+
+        if (!snapshot?.profile?.name && !snapshot?.professionalProfile?.full_name) {
+          setName("");
+        }
+        if (!snapshot?.professionalProfile?.email && session?.email) {
+          setEmail(session.email);
+        }
+
+        if (snapshot?.professionalProfile?.phone) setPhone(snapshot.professionalProfile.phone);
+        if (snapshot?.professionalProfile?.experience_years !== undefined) {
+          setExperience(String(snapshot.professionalProfile.experience_years));
+        }
+        if (snapshot?.professionalProfile?.primary_service) {
+          setSelectedService(snapshot.professionalProfile.primary_service);
+        }
+        if (snapshot?.professionalProfile?.aadhaar_url) {
+          setAadhaarUrl(snapshot.professionalProfile.aadhaar_url);
+          setAadhaarStatus("done");
+        }
+        if (snapshot?.professionalProfile?.certificate_url) {
+          setCertificateUrl(snapshot.professionalProfile.certificate_url);
+          setCertStatus("done");
+        }
+      } catch (error) {
+        Alert.alert("Profile Fetch Failed", error?.message || "Could not fetch profile from Supabase.");
+      } finally {
+        setProfileLoading(false);
+      }
+    };
+    bootstrapProfessionalSession();
+  }, []);
+
+  const handleSubmitApplication = async () => {
+    if (submitting) return;
+
+    try {
+      setSubmitting(true);
+      const rawSession = await AsyncStorage.getItem(SESSION_KEY);
+      if (!rawSession) {
+        throw new Error("Session missing. Please login again.");
+      }
+      const session = JSON.parse(rawSession);
+      if (!session?.uid || session?.role !== "professional") {
+        throw new Error("Professional session not found. Please login again.");
+      }
+
+      await completeProfessionalOnboarding({
+        userId: session.uid,
+        fullName: name.trim(),
+        phone: phone.trim(),
+        email: email.trim(),
+        experienceYears: experience,
+        primaryService: selectedService,
+        aadhaarUploaded: aadhaarStatus === "done",
+        certificateUploaded: certStatus === "done",
+        aadhaarUrl,
+        certificateUrl,
+      });
+
+      await AsyncStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify({
+          ...session,
+          email: email.trim().toLowerCase(),
+          onboardingComplete: true,
+        })
+      );
+
+      await createProfessionalRegistrationLog({
+        userId: session.uid,
+        action: "onboarding_completed",
+        message: "Professional profile submitted and onboarding marked complete",
+        payload: {
+          fullName: name.trim(),
+          phone: phone.trim(),
+          email: email.trim().toLowerCase(),
+          experienceYears: Number(experience) || 0,
+          primaryService: selectedService,
+          aadhaarUploaded: aadhaarStatus === "done",
+          certificateUploaded: certStatus === "done",
+        },
+      });
+
+      const snapshot = await fetchProfessionalRegistrationSnapshot(session.uid);
+      const logs = await fetchProfessionalRegistrationLogs(session.uid);
+
+      setApiSnapshot(snapshot);
+      setApiLogs(logs);
+      setRegistrationDone(true);
+    } catch (error) {
+      Alert.alert("Registration Failed", error?.message || "Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const renderSuccessFromApi = () => (
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scrollArea}>
+      <Text style={s.subViewDescription}>
+        Registration completed. The details below are fetched from Supabase API.
+      </Text>
+
+      <View style={s.uploadCardWrapper}>
+        <BlurView intensity={85} tint="light" style={s.uploadGlassCard}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.docTitleText}>Profile Snapshot (API)</Text>
+            <Text style={s.docSubText}>
+              Name: {apiSnapshot?.professionalProfile?.full_name || "-"}
+            </Text>
+            <Text style={s.docSubText}>
+              Email: {apiSnapshot?.professionalProfile?.email || "-"}
+            </Text>
+            <Text style={s.docSubText}>
+              Phone: {apiSnapshot?.professionalProfile?.phone || "-"}
+            </Text>
+            <Text style={s.docSubText}>
+              Service: {apiSnapshot?.professionalProfile?.primary_service || "-"}
+            </Text>
+            <Text style={s.docSubText}>
+              Experience: {apiSnapshot?.professionalProfile?.experience_years ?? "-"} years
+            </Text>
+            <Text style={s.docSubText}>
+              Onboarding Complete: {String(apiSnapshot?.profile?.onboarding_complete)}
+            </Text>
+          </View>
+        </BlurView>
+      </View>
+
+      <Text style={s.inputLabel}>Registration Logs (API)</Text>
+      <View style={s.languageCardWrapper}>
+        <BlurView intensity={90} tint="light" style={s.languageGlassBlock}>
+          {apiLogs.length > 0 ? (
+            apiLogs.map((log, index) => (
+              <View key={String(log.id)}>
+                {index > 0 && <View style={s.innerCardDivider} />}
+                <View style={s.langSelectionRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.langItemText}>{log.action || "log"}</Text>
+                    <Text style={s.docSubText}>{log.message || "-"}</Text>
+                  </View>
+                  <CheckCircle2 size={16} color={C.success} />
+                </View>
+              </View>
+            ))
+          ) : (
+            <View style={s.langSelectionRow}>
+              <Text style={s.langItemText}>No logs returned from API</Text>
+            </View>
+          )}
+        </BlurView>
+      </View>
+
+      <TouchableOpacity
+        style={s.mainActionBtn}
+        activeOpacity={0.85}
+        onPress={() => router.replace("/pro-dashboard")}
+      >
+        <LinearGradient colors={[C.p1, C.p2]} style={s.actionBtnGradient}>
+          <Text style={s.actionBtnText}>Continue to Professional Home</Text>
+        </LinearGradient>
+      </TouchableOpacity>
+    </ScrollView>
+  );
 
   // ─── STEP RENDERERS ──────────────────────────────────────────
 
@@ -92,6 +348,29 @@ export default function ProfessionalRegisterScreen() {
         high-ticket local jobs.
       </Text>
 
+      <Text style={s.inputLabel}>Auth/API Logs</Text>
+      <View style={s.languageCardWrapper}>
+        <BlurView intensity={90} tint="light" style={s.languageGlassBlock}>
+          {preloadLogs.length > 0 ? (
+            preloadLogs.slice(0, 4).map((log, index) => (
+              <View key={String(log.id)}>
+                {index > 0 && <View style={s.innerCardDivider} />}
+                <View style={s.langSelectionRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.langItemText}>{log.action || "log"}</Text>
+                    <Text style={s.docSubText}>{log.message || "-"}</Text>
+                  </View>
+                </View>
+              </View>
+            ))
+          ) : (
+            <View style={s.langSelectionRow}>
+              <Text style={s.langItemText}>No signup/login logs fetched yet.</Text>
+            </View>
+          )}
+        </BlurView>
+      </View>
+
       {/* Input Field: Full Name */}
       <Text style={s.inputLabel}>Full Name</Text>
       <View style={s.inputContainerFrame}>
@@ -100,9 +379,10 @@ export default function ProfessionalRegisterScreen() {
           placeholder="Enter your official name"
           placeholderTextColor={C.textMuted}
           value={name}
-          onChangeText={setName}
-          style={s.textInputField}
-        />
+                  onChangeText={setName}
+                  style={s.textInputField}
+                  editable={false}
+                />
       </View>
 
       {/* Input Field: Mobile Number */}
@@ -130,6 +410,7 @@ export default function ProfessionalRegisterScreen() {
           value={email}
           onChangeText={setEmail}
           style={s.textInputField}
+          editable={false}
         />
       </View>
 
@@ -210,7 +491,7 @@ export default function ProfessionalRegisterScreen() {
           {aadhaarStatus === "empty" && (
             <TouchableOpacity
               style={s.uploadTriggerBtn}
-              onPress={() => handleSimulateUpload("aadhaar")}
+              onPress={() => handlePickAndUploadDocument("aadhaar")}
             >
               <UploadCloud size={14} color={C.p2} />
               <Text style={s.uploadTriggerText}>Upload</Text>
@@ -242,7 +523,7 @@ export default function ProfessionalRegisterScreen() {
           {certStatus === "empty" && (
             <TouchableOpacity
               style={s.uploadTriggerBtn}
-              onPress={() => handleSimulateUpload("cert")}
+              onPress={() => handlePickAndUploadDocument("cert")}
             >
               <UploadCloud size={14} color={C.p2} />
               <Text style={s.uploadTriggerText}>Upload</Text>
@@ -274,16 +555,15 @@ export default function ProfessionalRegisterScreen() {
       <TouchableOpacity
         style={s.mainActionBtn}
         activeOpacity={0.85}
-        onPress={() => {
-          if (aadhaarStatus === "done" && certStatus === "done") {
-            alert("Registration Complete! Verification Pending.");
-          } else {
-            alert("Please upload both validation documents to proceed.");
-          }
-        }}
+        onPress={handleSubmitApplication}
+        disabled={submitting}
       >
         <LinearGradient colors={[C.p1, C.p2]} style={s.actionBtnGradient}>
-          <Text style={s.actionBtnText}>Submit Application</Text>
+          {submitting ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={s.actionBtnText}>Submit Application</Text>
+          )}
         </LinearGradient>
       </TouchableOpacity>
     </ScrollView>
@@ -338,7 +618,13 @@ export default function ProfessionalRegisterScreen() {
             <View style={[s.circleBarBtn, { opacity: 0 }]} />
           )}
           <Text style={s.headerTitleText}>Partner Onboarding</Text>
-          <View style={[s.circleBarBtn, { opacity: 0 }]} />
+          <TouchableOpacity
+            style={s.circleBarBtn}
+            onPress={handleLogout}
+            activeOpacity={0.75}
+          >
+            <Power size={sc(18)} color="#EF4444" strokeWidth={2.5} />
+          </TouchableOpacity>
         </View>
 
         {/* STEPPER STEP CONTROLLER TRAIL */}
@@ -380,7 +666,18 @@ export default function ProfessionalRegisterScreen() {
         </View>
 
         {/* ECOSYSTEM CONDITION ENGINE SWITCH */}
-        {currentStep === 1 ? renderStep1Profile() : renderStep2Documents()}
+        {profileLoading ? (
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+            <ActivityIndicator size="large" color={C.p2} />
+            <Text style={{ marginTop: 10, color: C.labelGray, fontWeight: "700" }}>
+              Fetching profile from Supabase...
+            </Text>
+          </View>
+        ) : registrationDone
+          ? renderSuccessFromApi()
+          : currentStep === 1
+            ? renderStep1Profile()
+            : renderStep2Documents()}
       </SafeAreaView>
     </View>
   );
@@ -524,6 +821,27 @@ const s = StyleSheet.create({
   uploadTriggerText: { fontSize: sc(12), fontWeight: "800", color: C.p2 },
   statusStateText: { fontSize: sc(12), fontWeight: "700" },
   successCheckBadge: { padding: 4 },
+  languageCardWrapper: {
+    borderRadius: 24,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.7)",
+    elevation: 3,
+    shadowColor: C.p3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+  },
+  languageGlassBlock: { padding: 4, backgroundColor: "rgba(255, 255, 255, 0.45)" },
+  langSelectionRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  langItemText: { fontSize: sc(13), fontWeight: "700", color: C.textDark, letterSpacing: -0.1 },
+  innerCardDivider: { height: 1, backgroundColor: "rgba(232, 229, 255, 0.5)", marginHorizontal: 16 },
 
   // Compliance Notices
   complianceNoticeBox: {

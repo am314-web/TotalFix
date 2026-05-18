@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import * as ImagePicker from "expo-image-picker";
 import {
   View,
   Text,
@@ -11,6 +12,7 @@ import {
   Image,
   Switch,
   Platform,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
@@ -29,6 +31,12 @@ import {
   Building,
 } from "lucide-react-native";
 import AppBottomTab from "../components/AppBottomTab";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { router } from "expo-router";
+import { signOut } from "firebase/auth";
+import { auth } from "../services/firebase";
+import { SESSION_KEY } from "../services/session";
+import { getUserAvatar, setUserAvatar } from "../services/profileAvatarService";
 
 const { width, height } = Dimensions.get("window");
 const sc = (n) => (width / 390) * n;
@@ -53,6 +61,40 @@ export default function ProfileEcosystemScreen() {
   const [currentView, setCurrentView] = useState("main"); // main, addresses, payments, language
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [selectedLang, setSelectedLang] = useState("English");
+  const [avatarUri, setAvatarUri] = useState("");
+
+  React.useEffect(() => {
+    const loadAvatar = async () => {
+      const raw = await AsyncStorage.getItem(SESSION_KEY);
+      const session = raw ? JSON.parse(raw) : null;
+      const uid = session?.uid || "";
+      setAvatarUri(await getUserAvatar(uid, "client"));
+    };
+    loadAvatar();
+  }, []);
+
+  const pickAvatar = async () => {
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
+    if (res.canceled) return;
+    const uri = res.assets?.[0]?.uri;
+    if (!uri) return;
+    const raw = await AsyncStorage.getItem(SESSION_KEY);
+    const session = raw ? JSON.parse(raw) : null;
+    const uid = session?.uid || "";
+    await setUserAvatar(uid, uri);
+    setAvatarUri(uri);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await AsyncStorage.removeItem(SESSION_KEY);
+      await signOut(auth);
+      router.replace("/");
+    } catch (error) {
+      console.error("Error during profile logout:", error);
+      Alert.alert("Logout Failed", "An error occurred during logout. Please try again.");
+    }
+  };
 
   // --- SUB-DATA STRUCTURES ---
   const savedAddresses = [
@@ -86,7 +128,9 @@ export default function ProfileEcosystemScreen() {
       {/* HERO PROFILE HEADER */}
       <View style={s.profileCardWrapper}>
         <BlurView intensity={Platform.OS === 'ios' ? 45 : 95} tint="light" style={s.glassCardRow}>
-          <Image source={{ uri: "https://i.pravatar.cc/150?u=alok" }} style={s.profileAvatar} />
+          <TouchableOpacity onPress={pickAvatar} activeOpacity={0.8}>
+            <Image source={{ uri: avatarUri }} style={s.profileAvatar} />
+          </TouchableOpacity>
           <View style={s.profileTextMeta}>
             <Text style={s.userNameText}>Alok Mourya</Text>
             <Text style={s.userEmailText}>alokmourya@gmail.com</Text>
@@ -138,7 +182,7 @@ export default function ProfileEcosystemScreen() {
       </View>
 
       {/* Option: Logout Button */}
-      <TouchableOpacity style={[s.menuItemWrapper, { marginTop: sc(20) }]} activeOpacity={0.85} onPress={() => alert("Logged Out Successfully")}>
+      <TouchableOpacity style={[s.menuItemWrapper, { marginTop: sc(20) }]} activeOpacity={0.85} onPress={handleLogout}>
         <BlurView intensity={85} tint="light" style={s.menuGlassItem}>
           <View style={[s.menuIconFrame, { backgroundColor: "rgba(239, 68, 68, 0.08)" }]}><LogOut size={sc(16)} color="#EF4444" /></View>
           <Text style={[s.menuItemTitle, { color: "#EF4444" }]}>Logout Account</Text>

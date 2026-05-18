@@ -12,33 +12,39 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
+import AppBottomTab from '../components/AppBottomTab';
 
 const { width } = Dimensions.get('window');
 
 const CATEGORIES = [
-  { id: '1', title: 'Plumber', iconSource: require('../assets/images/icons/plumber.png') },
-  { id: '2', title: 'Carpenter', iconSource: require('../assets/images/icons/carpenter.png') },
-  { id: '3', title: 'Welder', iconSource: require('../assets/images/icons/welder.png') },
-  { id: '4', title: 'Contactor', iconSource: require('../assets/images/icons/construction.png') },
-  { id: '5', title: 'Electrician', iconSource: require('../assets/images/icons/electrician.png') },
-  { id: '6', title: 'Painter', iconSource: require('../assets/images/icons/painter.png') },
-  { id: '7', title: 'Laundry', iconSource: require('../assets/images/icons/laundary.png') },
-  { id: '8', title: 'Mechanic', iconSource: require('../assets/images/icons/mechanic.png') },
-  { id: '9', title: 'Cleaner', iconSource: require('../assets/images/icons/laundary.png') },
-  { id: '10', title: 'Gardener', iconSource: require('../assets/images/icons/construction.png') },
-  { id: '11', title: 'Security', iconSource: require('../assets/images/icons/construction.png') },
-  { id: '12', title: 'Tailor', iconSource: require('../assets/images/icons/painter.png') },
+  { id: '1', title: 'Plumber', serviceKey: 'plumber', iconSource: require('../assets/images/icons/plumber.png') },
+  { id: '2', title: 'Carpenter', serviceKey: 'carpenter', iconSource: require('../assets/images/icons/carpenter.png') },
+  { id: '3', title: 'Welder', serviceKey: 'welder', iconSource: require('../assets/images/icons/welder.png') },
+  { id: '4', title: 'Contractor', serviceKey: 'contractor', iconSource: require('../assets/images/icons/construction.png') },
+  { id: '5', title: 'Electrician', serviceKey: 'electrician', iconSource: require('../assets/images/icons/electrician.png') },
+  { id: '6', title: 'Painter', serviceKey: 'painter', iconSource: require('../assets/images/icons/painter.png') },
+  { id: '7', title: 'Laundry', serviceKey: 'laundry', iconSource: require('../assets/images/icons/laundary.png') },
+  { id: '8', title: 'Mechanic', serviceKey: 'mechanic', iconSource: require('../assets/images/icons/mechanic.png') },
+  { id: '9', title: 'Cleaner', serviceKey: 'cleaner', iconSource: require('../assets/images/icons/laundary.png') },
+  { id: '10', title: 'Gardener', serviceKey: 'gardener', iconSource: require('../assets/images/icons/construction.png') },
+  { id: '11', title: 'Security', serviceKey: 'security', iconSource: require('../assets/images/icons/construction.png') },
+  { id: '12', title: 'Tailor', serviceKey: 'tailor', iconSource: require('../assets/images/icons/painter.png') },
 ];
 
-const CategoryItem = ({ title, iconSource }) => (
-  <View style={styles.cardContainer}>
+const CategoryItem = ({ title, iconSource, serviceKey }) => (
+  <TouchableOpacity
+    activeOpacity={0.85}
+    onPress={() => router.push({ pathname: "/service-detail", params: { service: serviceKey } })}
+    style={styles.cardContainer}
+  >
     <BlurView intensity={30} tint="light" style={styles.glassCard}>
       <View style={styles.iconCircle}>
         <Image source={iconSource} style={styles.categoryIcon} resizeMode="contain" />
       </View>
       <Text style={styles.cardText}>{title}</Text>
     </BlurView>
-  </View>
+  </TouchableOpacity>
 );
 
 export default function CategoriesScreen() {
@@ -56,19 +62,17 @@ export default function CategoriesScreen() {
       <SafeAreaView style={{ flex: 1 }}>
         {/* Modern Header */}
         <View style={styles.header}>
-          <TouchableOpacity style={styles.headerIconButton}>
+          <TouchableOpacity style={styles.headerIconButton} onPress={() => router.back()}>
             <MaterialCommunityIcons name="chevron-left" size={24} color="#2D3436" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Categories</Text>
-          <TouchableOpacity style={styles.headerIconButton}>
-            <MaterialCommunityIcons name="dots-vertical" size={24} color="#2D3436" />
-          </TouchableOpacity>
+          <View style={styles.headerIconPlaceholder} />
         </View>
 
         {/* Grid List */}
         <FlatList
           data={CATEGORIES}
-          renderItem={({ item }) => <CategoryItem title={item.title} iconSource={item.iconSource} />}
+          renderItem={({ item }) => <CategoryItem title={item.title} serviceKey={item.serviceKey} iconSource={item.iconSource} />}
           keyExtractor={item => item.id}
           numColumns={3}
           contentContainerStyle={styles.listPadding}
@@ -76,18 +80,7 @@ export default function CategoriesScreen() {
           columnWrapperStyle={styles.columnWrapper}
         />
 
-        {/* Floating Glass Bottom Tab */}
-        <View style={styles.tabWrapper}>
-          <BlurView intensity={80} tint="light" style={styles.bottomTab}>
-            <MaterialCommunityIcons name="home-outline" size={24} color="#636E72" />
-            <View style={styles.activeTabIcon}>
-              <MaterialCommunityIcons name="view-grid" size={24} color="#0984E3" />
-            </View>
-            <MaterialCommunityIcons name="magnify" size={24} color="#636E72" />
-            <MaterialCommunityIcons name="bell-outline" size={24} color="#636E72" />
-            <MaterialCommunityIcons name="account-outline" size={24} color="#636E72" />
-          </BlurView>
-        </View>
+        <AppBottomTab />
       </SafeAreaView>
     </View>
   );
@@ -128,6 +121,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  headerIconPlaceholder: {
+    width: 40,
+    height: 40,
   },
   listPadding: {
     paddingHorizontal: 15,
@@ -170,28 +167,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#2D3436',
   },
-  tabWrapper: {
-    position: 'absolute',
-    bottom: 30,
-    left: 20,
-    right: 20,
-    height: 70,
-    borderRadius: 35,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.5)',
-    elevation: 5,
-  },
-  bottomTab: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-  },
-  activeTabIcon: {
-    backgroundColor: 'rgba(9, 132, 227, 0.1)',
-    padding: 10,
-    borderRadius: 20,
-  }
 });

@@ -25,7 +25,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import AppBottomTab from "../components/AppBottomTab";
+import ProBottomTab from "../components/ProBottomTab";
 
 const { width, height } = Dimensions.get("window");
 const sc = (n) => (width / 390) * n;
@@ -436,7 +436,7 @@ export default function ProJobProgressScreen() {
           ? renderProgressView()
           : renderAmendmentView()}
       </SafeAreaView>
-      <AppBottomTab />
+      <ProBottomTab />
     </View>
   );
 }

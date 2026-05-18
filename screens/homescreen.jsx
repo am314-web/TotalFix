@@ -1,5 +1,6 @@
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
 import {
     Bell,
     Calendar,
@@ -7,7 +8,6 @@ import {
     Clock,
     Home,
     Map,
-    MessageCircle,
     Mic,
     Search,
     Star,
@@ -19,7 +19,6 @@ import { useState } from "react";
 import {
     Dimensions,
     Image,
-    SafeAreaView,
     ScrollView,
     StatusBar,
     StyleSheet,
@@ -28,6 +27,8 @@ import {
     TouchableOpacity,
     View
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import AppBottomTab from "../components/AppBottomTab";
 
 const { width } = Dimensions.get("window");
 const P = "#4A3AFF";
@@ -43,6 +44,23 @@ const MUTED = "#9CA3AF";
 const GOLD = "#F59E0B";
 const GREEN = "#10B981";
 const RED = "#EF4444";
+
+const mapToServiceKey = (name) => {
+  const lower = name.toLowerCase();
+  if (lower.includes("clean")) return "cleaner";
+  if (lower.includes("ac") || lower.includes("repair") || lower.includes("electric")) return "electrician";
+  if (lower.includes("paint")) return "painter";
+  if (lower.includes("plumb")) return "plumber";
+  if (lower.includes("carpenter") || lower.includes("carpentry")) return "carpenter";
+  if (lower.includes("weld")) return "welder";
+  if (lower.includes("contract") || lower.includes("construct")) return "contractor";
+  if (lower.includes("laund")) return "laundry";
+  if (lower.includes("mechanic")) return "mechanic";
+  if (lower.includes("garden")) return "gardener";
+  if (lower.includes("secur")) return "security";
+  if (lower.includes("beautician") || lower.includes("wellness") || lower.includes("tailor")) return "tailor";
+  return "plumber"; // fallback
+};
 
 // ─── DATA ───────────────────────────────────────────────────────────────────
 
@@ -228,115 +246,19 @@ const RECENTS = [
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState("Home");
-  const [screen, setScreen] = useState("Home");
   const [activeCat, setActiveCat] = useState(0);
 
   return (
     <SafeAreaView style={s.safe}>
       <StatusBar barStyle="dark-content" backgroundColor={BG} />
 
-      {screen === "Home" && (
-        <HomeScreen
-          activeCat={activeCat}
-          setActiveCat={setActiveCat}
-          onExplore={() => {
-            setScreen("Category");
-            setActiveTab("Search");
-          }}
-        />
-      )}
-      {screen === "Category" && (
-        <PlaceholderScreen
-          title="Explore Services"
-          onBack={() => {
-            setScreen("Home");
-            setActiveTab("Home");
-          }}
-        />
-      )}
-      {screen === "Bookings" && (
-        <PlaceholderScreen
-          title="My Bookings"
-          onBack={() => {
-            setScreen("Home");
-            setActiveTab("Home");
-          }}
-        />
-      )}
-      {screen === "Wallet" && (
-        <PlaceholderScreen
-          title="Wallet & Rewards"
-          onBack={() => {
-            setScreen("Home");
-            setActiveTab("Home");
-          }}
-        />
-      )}
-      {screen === "Profile" && (
-        <PlaceholderScreen
-          title="My Profile"
-          onBack={() => {
-            setScreen("Home");
-            setActiveTab("Home");
-          }}
-        />
-      )}
+      <HomeScreen
+        activeCat={activeCat}
+        setActiveCat={setActiveCat}
+        onExplore={() => router.push("/categories")}
+      />
 
-      {/* TAB BAR */}
-      <View style={s.tabWrapper}>
-        <BlurView intensity={90} tint="light" style={s.tabBar}>
-          <TabBtn
-            icon={Home}
-            label="Home"
-            active={activeTab === "Home"}
-            onPress={() => {
-              setActiveTab("Home");
-              setScreen("Home");
-            }}
-          />
-          <TabBtn
-            icon={Calendar}
-            label="Bookings"
-            active={activeTab === "Bookings"}
-            onPress={() => {
-              setActiveTab("Bookings");
-              setScreen("Bookings");
-            }}
-          />
-          <View style={{ width: 64 }} />
-          <TabBtn
-            icon={Wallet}
-            label="Wallet"
-            active={activeTab === "Wallet"}
-            onPress={() => {
-              setActiveTab("Wallet");
-              setScreen("Wallet");
-            }}
-          />
-          <TabBtn
-            icon={User}
-            label="Profile"
-            active={activeTab === "Profile"}
-            onPress={() => {
-              setActiveTab("Profile");
-              setScreen("Profile");
-            }}
-          />
-        </BlurView>
-        <TouchableOpacity
-          style={s.tabCenter}
-          onPress={() => {
-            setScreen("Category");
-            setActiveTab("Search");
-          }}
-          activeOpacity={0.85}
-        >
-          <LinearGradient colors={[P, P2]} style={s.tabCenterGrad}>
-            <Search color="white" size={26} strokeWidth={2.5} />
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
+      <AppBottomTab />
     </SafeAreaView>
   );
 }
@@ -361,13 +283,7 @@ const HomeScreen = ({ activeCat, setActiveCat, onExplore }) => (
         </Text>
       </View>
       <View style={{ flexDirection: "row", gap: 8 }}>
-        <TouchableOpacity style={s.iconBtn}>
-          <MessageCircle size={20} color={TEXT} />
-          <View style={[s.badge, { backgroundColor: GREEN }]}>
-            <Text style={s.badgeTxt}>1</Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity style={s.iconBtn}>
+        <TouchableOpacity style={s.iconBtn} onPress={() => router.push("/notifications")}>
           <Bell size={20} color={TEXT} />
           <View style={s.badge}>
             <Text style={s.badgeTxt}>3</Text>
@@ -483,7 +399,11 @@ const HomeScreen = ({ activeCat, setActiveCat, onExplore }) => (
         <TouchableOpacity
           key={i}
           style={s.catItem}
-          onPress={() => setActiveCat(i)}
+          onPress={() => {
+            setActiveCat(i);
+            const serviceKey = mapToServiceKey(c.label);
+            router.push({ pathname: "/service-detail", params: { service: serviceKey } });
+          }}
         >
           <View
             style={[
@@ -510,14 +430,22 @@ const HomeScreen = ({ activeCat, setActiveCat, onExplore }) => (
     </ScrollView>
 
     {/* FLASH DEALS */}
-    <SectionHeader title="⏳  Flash Deals" link="View All →" />
+    <SectionHeader title="⏳  Flash Deals" link="See All →" onLink={() => router.push("/flash-deals")} />
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={{ paddingHorizontal: 20, gap: 12 }}
     >
       {DEALS.map((d, i) => (
-        <TouchableOpacity key={i} style={s.dealCard} activeOpacity={0.85}>
+        <TouchableOpacity
+          key={i}
+          style={s.dealCard}
+          activeOpacity={0.85}
+          onPress={() => {
+            const serviceKey = mapToServiceKey(d.name);
+            router.push({ pathname: "/service-detail", params: { service: serviceKey } });
+          }}
+        >
           <View style={s.dealRibbonWrap}>
             <Text style={s.dealRibbon}>{d.ribbon}</Text>
           </View>
@@ -551,14 +479,21 @@ const HomeScreen = ({ activeCat, setActiveCat, onExplore }) => (
     </ScrollView>
 
     {/* NEARBY PROS */}
-    <SectionHeader title="Nearby Professionals" link="Map View →" />
+    <SectionHeader title="Nearby Professionals" link="See All →" onLink={() => router.push("/nearby-pros")} />
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={{ paddingHorizontal: 20, gap: 12 }}
     >
       {PROS.map((p, i) => (
-        <TouchableOpacity key={i} style={s.proCard} activeOpacity={0.85}>
+        <TouchableOpacity
+          key={i}
+          style={s.proCard}
+          activeOpacity={0.85}
+          onPress={() => {
+            router.push({ pathname: "/proffesional-profile", params: { name: p.name, role: p.role } });
+          }}
+        >
           <View style={s.proAv}>
             {p.imageSource ? (
               <Image
@@ -594,7 +529,15 @@ const HomeScreen = ({ activeCat, setActiveCat, onExplore }) => (
     <SectionHeader title="Recent Bookings" link="View All →" />
     <View style={{ paddingHorizontal: 20, gap: 10 }}>
       {RECENTS.map((r, i) => (
-        <TouchableOpacity key={i} style={s.recCard} activeOpacity={0.85}>
+        <TouchableOpacity
+          key={i}
+          style={s.recCard}
+          activeOpacity={0.85}
+          onPress={() => {
+            const serviceKey = mapToServiceKey(r.name);
+            router.push({ pathname: "/service-detail", params: { service: serviceKey } });
+          }}
+        >
           <View style={[s.recIcon, { backgroundColor: r.iconBg }]}>
             {r.iconSource ? (
               <Image

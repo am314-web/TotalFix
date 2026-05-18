@@ -1,400 +1,749 @@
-import React, { useState, useEffect } from "react";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
+import { useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
+  Dimensions,
   SafeAreaView,
-  TouchableOpacity,
   ScrollView,
   StatusBar,
-  Dimensions,
-  Image,
-  Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
-import {
-  ChevronLeft,
-  Clock,
-  Camera,
-  CheckCircle2,
-  Plus,
-  Minus,
-  Zap,
-  UserCheck,
-  Circle,
-  Package,
-  Activity,
-  User,
-  MapPin,
-  Play,
-  Pause
-} from "lucide-react-native";
-import AppBottomTab from "../components/AppBottomTab";
 
 const { width, height } = Dimensions.get("window");
-const sc = (n) => (width / 390) * n;
 
-// ─── DESIGN TOKENS ───────────────────────────────────────────
+// ─── THE CRITIC'S PALETTE ─────────────────────────────────────
 const C = {
-  p1: "#8C7FFF",
-  p2: "#5B4CF0",
-  p3: "#3D2EC0",
-  p4: "#1B108E",
-  dark: "#150C72",
-  white: "#FFFFFF",
-  offWhite: "#F8F7FF",
-  inputBg: "#F4F2FF",
-  inputBorder: "#E8E5FF",
-  labelGray: "#8B8BA7",
-  textDark: "#1A1740",
-  textMuted: "#B0B0C8",
-  success: "#22C55E",
+  // Deep space contrast layer to elevate glass surfaces
+  bgGradient: ["#0B0826", "#120D3D", "#07051A"],
+
+  // Neon accents for volumetric glass reflections
+  glassPill: "rgba(255, 255, 255, 0.07)",
+  glassCard: "rgba(255, 255, 255, 0.05)",
+  glassBorder: "rgba(255, 255, 255, 0.12)",
+  glassBorderActive: "rgba(140, 127, 255, 0.4)",
+
+  // High-fidelity typography vectors
+  textPrimary: "#FFFFFF",
+  textSecondary: "#9E9AA7",
+  textMuted: "#625F70",
+
+  // Vivid interactive highlights
+  neonBrand: "#8C7FFF",
+  neonCyan: "#06B6D4",
+  neonAmber: "#F59E0B",
+  neonGreen: "#10B981",
+
+  // Premium Gradients
+  brandGlow: ["#8C7FFF", "#5B4CF0"],
+  darkGlow: ["#1B108E", "#3D2EC0"],
+  successGlow: ["#10B981", "#059669"],
+  offlineGlow: ["rgba(255,255,255,0.1)", "rgba(255,255,255,0.05)"],
 };
 
-export default function ProJobProgressScreen() {
-  const [currentView, setCurrentView] = useState("progress"); // progress, amendment
-  const [seconds, setSeconds] = useState(1642); 
-  const [isTimerRunning, setIsTimerRunning] = useState(true);
+export default function PremiumProfessionalProfile() {
+  // Nested Router Emulation State ('dashboard' vs 'publicView')
+  const [nestedScreen, setScreenView] = useState("dashboard");
+  const [isOnline, setIsOnline] = useState(true);
 
-  // --- JOB CHECKLIST TRACKING STATES ---
-  const [checklist, setChecklist] = useState([
-    { id: 1, text: "Safety gear & uniform compliance checked", done: true },
-    { id: 2, text: "Pre-service AC temperature & current log metrics recorded", done: true },
-    { id: 3, text: "Jet cleaning foam layer uniformly applied", done: false },
-  ]);
-
-  // --- PHOTO STATUS CODES ---
-  const [beforePhoto, setBeforePhoto] = useState("done"); 
-  const [afterPhoto, setAfterPhoto] = useState("empty");
-
-  // --- SPARE PARTS & EXTRA AMENDMENTS STATES ---
-  const [spareQty, setSpareQty] = useState(0);
-  const [extraCost, setExtraCost] = useState(0); 
-  const [isApproved, setIsApproved] = useState(false);
-
-  // Live StopWatch Engine Loop
-  useEffect(() => {
-    let timer;
-    if (isTimerRunning) {
-      timer = setInterval(() => {
-        setSeconds((prev) => prev + 1);
-      }, 1000);
-    }
-    return () => clearInterval(timer);
-  }, [isTimerRunning]);
-
-  const formatTimer = (totalSeconds) => {
-    const hrs = Math.floor(totalSeconds / 3600);
-    const mins = Math.floor((totalSeconds % 3600) / 60);
-    const secs = totalSeconds % 60;
-    return `${hrs > 0 ? hrs + ":" : ""}${mins < 10 ? "0" + mins : mins}:${secs < 10 ? "0" + secs : secs}`;
-  };
-
-  const toggleChecklist = (id) => {
-    setChecklist(checklist.map(item => item.id === id ? { ...item, done: !item.done } : item));
-  };
-
-  const SectionLabel = ({ label, rightAction, onActionPress }) => (
-    <View style={s.sectionLabelRow}>
-      <Text style={s.sectionLabelText}>{label}</Text>
-      {rightAction && (
-        <TouchableOpacity onPress={onActionPress}>
-          <Text style={s.sectionActionText}>{rightAction}</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-
-  // ─── VIEW 1: ACTIVE JOB PROGRESS PANEL ───────────────────────
-  const renderProgressView = () => (
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scrollArea}>
-      
-      {/* LIVE TIMER HUB */}
-      <View style={s.timerWrapper}>
-        <BlurView intensity={Platform.OS === 'ios' ? 45 : 95} tint="light" style={s.timerGlassBlock}>
-          <View style={s.timerMetaHeader}>
-            <Activity size={14} color={C.p2} />
-            <Text style={s.timerHeaderTitle}>ORDER SERVICE ELAPSED TIME</Text>
-          </View>
-          <Text style={s.timerValueText}>{formatTimer(seconds)}</Text>
-          
-          <TouchableOpacity 
-            style={[s.timerControlToggleBtn, !isTimerRunning && { borderColor: C.success }]} 
-            onPress={() => setIsTimerRunning(!isTimerRunning)}
-            activeOpacity={0.8}
-          >
-            {isTimerRunning ? (
-              <>
-                <Pause size={12} color="#EF4444" fill="#EF4444" />
-                <Text style={[s.timerToggleText, { color: "#EF4444" }]}>Pause Timer</Text>
-              </>
-            ) : (
-              <>
-                <Play size={12} color={C.success} fill={C.success} />
-                <Text style={[s.timerToggleText, { color: C.success }]}>Resume Session</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </BlurView>
-      </View>
-
-      {/* BEFORE / AFTER VISUAL COMPLIANCE VAULT */}
-      <SectionLabel label="Visual Evidence Audit" />
-      <View style={s.photoRowContainer}>
-        {/* Before Photo Box */}
-        <TouchableOpacity style={s.photoTouchNode} activeOpacity={0.8}>
-          <BlurView intensity={85} tint="light" style={[s.photoGlassBox, beforePhoto === "done" && s.photoActiveGlass]}>
-            {beforePhoto === "done" ? (
-              <>
-                <Image source={{ uri: "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?q=80&w=200" }} style={s.capturedImage} />
-                <LinearGradient colors={[C.p1, C.p2]} style={s.photoStatusIndicator}>
-                  <CheckCircle2 size={10} color={C.white} />
-                </LinearGradient>
-                <Text style={s.photoFloatingLabel}>Pre-Service Frame</Text>
-              </>
-            ) : (
-              <>
-                <View style={s.cameraIconBox}><Camera size={16} color={C.p2} /></View>
-                <Text style={s.photoBoxText}>Before Photo</Text>
-              </>
-            )}
-          </BlurView>
-        </TouchableOpacity>
-
-        {/* After Photo Box */}
-        <TouchableOpacity style={s.photoTouchNode} activeOpacity={0.8} onPress={() => setAfterPhoto("done")}>
-          <BlurView intensity={85} tint="light" style={[s.photoGlassBox, afterPhoto === "done" && s.photoActiveGlass]}>
-            {afterPhoto === "done" ? (
-              <>
-                <Image source={{ uri: "https://images.unsplash.com/photo-1581092921461-eab62e97a780?q=80&w=200" }} style={s.capturedImage} />
-                <LinearGradient colors={[C.p1, C.p2]} style={s.photoStatusIndicator}>
-                  <CheckCircle2 size={10} color={C.white} />
-                </LinearGradient>
-                <Text style={s.photoFloatingLabel}>Post-Service Frame</Text>
-              </>
-            ) : (
-              <>
-                <View style={s.cameraIconBox}><Camera size={16} color={C.labelGray} /></View>
-                <Text style={[s.photoBoxText, { color: C.labelGray }]}>After Photo</Text>
-              </>
-            )}
-          </BlurView>
-        </TouchableOpacity>
-      </View>
-
-      {/* JOB PROCEDURE CHECKLIST MATRIX */}
-      <SectionLabel label="Task Checkpoints" />
-      <View style={s.checklistCardWrapper}>
-        <BlurView intensity={90} tint="light" style={s.checklistGlassBlock}>
-          {checklist.map((item, index) => {
-            const isDone = item.done;
-            return (
-              <TouchableOpacity 
-                key={item.id} 
-                style={[s.checkRowItem, isDone && s.checkRowItemActive, index > 0 && s.itemBorderTop]} 
-                activeOpacity={0.75} 
-                onPress={() => toggleChecklist(item.id)}
-              >
-                <View style={[s.checkboxOuterShell, isDone && { borderColor: C.p2 }]}>
-                  {isDone && <CheckCircle2 size={16} color={C.p2} fill={C.inputBg} />}
-                </View>
-                <Text style={[s.checkItemText, isDone && s.checkItemTextDone]}>{item.text}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </BlurView>
-      </View>
-
-      {/* NAV TO AMENDMENT TRIGGER BUTTON */}
-      <TouchableOpacity style={s.dashedActionBtn} activeOpacity={0.75} onPress={() => setCurrentView("amendment")}>
-        <Plus size={14} color={C.p2} style={{ marginRight: 6 }} />
-        <Text style={s.dashedActionText}>Modify Bill / Add Spares & Labors</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={s.solidCtaBtn} activeOpacity={0.85} onPress={() => alert("Job close out initialized safely.")}>
-        <LinearGradient colors={[C.p1, C.p2]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.ctaBtnGradient}>
-          <Text style={s.ctaBtnText}>Complete Workspace Session</Text>
-        </LinearGradient>
-      </TouchableOpacity>
-    </ScrollView>
-  );
-
-  // ─── VIEW 2: SPARE PARTS & COST AMENDMENT CONSOLE ───────────
-  const renderAmendmentView = () => {
-    const totalExtra = (spareQty * 450) + Number(extraCost || 0);
-
-    return (
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scrollArea}>
-        <Text style={s.subViewDescription}>Amend the running order ledger configuration for real-time customer transparency.</Text>
-
-        {/* Spare parts count adjuster card */}
-        <SectionLabel label="Component Allocation" />
-        <View style={s.amendCardWrapper}>
-          <BlurView intensity={95} tint="light" style={s.amendGlassCard}>
-            <View style={s.spareIconContainer}><Package size={sc(16)} color={C.p2} /></View>
-            <View style={{ flex: 1, marginLeft: 14 }}>
-              <Text style={s.amendItemTitle}>Capacitor (45 mFD)</Text>
-              <Text style={s.amendItemSub}>Standard retail markup: ₹450.00</Text>
-            </View>
-            <View style={s.qtyAdjusterContainer}>
-              <TouchableOpacity style={s.qtyCircleBtn} onPress={() => spareQty > 0 && setSpareQty(spareQty - 1)}><Minus size={11} color={C.p2} /></TouchableOpacity>
-              <Text style={s.qtyDisplayValText}>{spareQty}</Text>
-              <TouchableOpacity style={s.qtyCircleBtn} onPress={() => setSpareQty(spareQty + 1)}><Plus size={11} color={C.p2} /></TouchableOpacity>
-            </View>
-          </BlurView>
-        </View>
-
-        {/* Additional service cost inputs */}
-        <SectionLabel label="Supplemental Labor Charges" />
-        <View style={s.amendCardWrapper}>
-          <BlurView intensity={95} tint="light" style={[s.amendGlassCard, { paddingVertical: 12 }]}>
-            <View style={s.spareIconContainer}><Zap size={sc(15)} color={C.p2} /></View>
-            <Text style={s.extraLabelTextField}>Extra Drainage / Copper Pipe Extension</Text>
-            <TouchableOpacity style={[s.priceOptionBtn, extraCost === 250 && s.priceOptionBtnActive]} onPress={() => setExtraCost(extraCost === 250 ? 0 : 250)}>
-              <Text style={[s.priceOptionText, extraCost === 250 && { color: C.p2, fontWeight: "800" }]}>+₹250</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[s.priceOptionBtn, extraCost === 500 && s.priceOptionBtnActive]} onPress={() => setExtraCost(extraCost === 500 ? 0 : 500)}>
-              <Text style={[s.priceOptionText, extraCost === 500 && { color: C.p2, fontWeight: "800" }]}>+₹500</Text>
-            </TouchableOpacity>
-          </BlurView>
-        </View>
-
-        {/* Customer validation sign off loop panel */}
-        <SectionLabel label="Client Verification Audit" />
-        <TouchableOpacity style={s.amendCardWrapper} activeOpacity={0.85} onPress={() => setIsApproved(!isApproved)}>
-          <BlurView intensity={95} tint="light" style={[s.amendGlassCard, isApproved && { borderColor: C.success }]}>
-            <View style={[s.spareIconContainer, isApproved && { backgroundColor: "rgba(34,197,94,0.08)", borderColor: "rgba(34,197,94,0.2)" }]}><UserCheck size={sc(16)} color={isApproved ? C.success : C.labelGray} /></View>
-            <View style={{ flex: 1, marginLeft: 14, marginRight: 10 }}>
-              <Text style={s.approvalNoticeTitle}>Secure Customer Consent</Text>
-              <Text style={s.approvalNoticeBodyText}>Authorize runtime bill updates of ₹{totalExtra} before sealing invoice ledger.</Text>
-            </View>
-            {isApproved ? (
-              <LinearGradient colors={["#34D399", C.success]} style={s.badgeCheckSuccess}><CheckCircle2 size={12} color={C.white} /></LinearGradient>
-            ) : (
-              <View style={s.badgeCheckEmpty} />
-            )}
-          </BlurView>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[s.solidCtaBtn, { marginTop: sc(20) }]} 
-          activeOpacity={0.85} 
-          onPress={() => {
-            if (isApproved) {
-              alert("Order matrix altered successfully.");
-              setCurrentView("progress");
-            } else {
-              alert("Verification signature required before application update.");
-            }
-          }}
-        >
-          <LinearGradient colors={[C.p1, C.p2]} style={s.ctaBtnGradient}>
-            <Text style={s.ctaBtnText}>Apply Amendments Matrix</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </ScrollView>
-    );
+  const proData = {
+    name: "Alok Mourya",
+    category: "Senior System Architect",
+    rating: "4.9",
+    totalReviews: "142",
+    experience: "5+ Years",
+    jobsDone: "1,240+",
+    walletBalance: "₹14,850",
+    skills: [
+      "System Architecture",
+      "React Native Core",
+      "PostgreSQL Engine",
+      "Realtime WebSockets",
+    ],
+    recentReviews: [
+      {
+        name: "Rahul Sharma",
+        text: "Architected our deployment framework flawlessly. Pure genius.",
+        rate: "5.0",
+      },
+      {
+        name: "Anita Patel",
+        text: "Unparalleled execution speed. Cleanest architectural code base I have reviewed.",
+        rate: "4.9",
+      },
+    ],
   };
 
   return (
-    <View style={s.container}>
-      <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
-      <LinearGradient colors={["#F4F3FF", "#FDFDFF"]} style={StyleSheet.absoluteFill} />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" />
 
-      {/* RADIAL AMBIENT BACKGROUND GLOW BLOBS */}
-      <View style={[s.ambientOrb, { top: -sc(40), left: -sc(40), backgroundColor: "rgba(140, 127, 255, 0.16)" }]} />
-      <View style={[s.ambientOrb, { bottom: height * 0.15, right: -sc(60), backgroundColor: "rgba(91, 76, 240, 0.1)" }]} />
+      {/* IMMERSIVE BACKDROP LAYER */}
+      <LinearGradient
+        colors={C.bgGradient}
+        style={StyleSheet.absoluteFillObject}
+      />
+
+      {/* NEON TANGIBLE GLOW NODES */}
+      <View style={styles.neonOrb1} />
+      <View style={styles.neonOrb2} />
+      <View style={styles.neonOrb3} />
 
       <SafeAreaView style={{ flex: 1 }}>
-        {/* VIEW NAVIGATION TOP BAR */}
-        <View style={s.header}>
-          {currentView !== "progress" ? (
-            <TouchableOpacity style={s.circleBarBtn} onPress={() => setCurrentView("progress")} activeOpacity={0.75}>
-              <ChevronLeft size={sc(20)} color={C.textDark} strokeWidth={2.5} />
+        {/* APP HEADER */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Professional Console</Text>
+
+          {/* GLASS SEGMENT NAVIGATION RAMP */}
+          <BlurView intensity={20} tint="dark" style={styles.segmentedRamp}>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => setScreenView("dashboard")}
+              style={[
+                styles.rampBtn,
+                nestedScreen === "dashboard" && styles.rampBtnActive,
+              ]}
+            >
+              {nestedScreen === "dashboard" && (
+                <LinearGradient
+                  colors={C.brandGlow}
+                  style={StyleSheet.absoluteFillObject}
+                />
+              )}
+              <Text
+                style={[
+                  styles.rampText,
+                  nestedScreen === "dashboard" && styles.rampTextActive,
+                ]}
+              >
+                Dashboard
+              </Text>
             </TouchableOpacity>
-          ) : (
-            <View style={[s.circleBarBtn, { opacity: 0 }]} />
-          )}
-          <Text style={s.headerTitleText}>{currentView === "progress" ? "Job Session Monitor" : "Invoice Amendment Console"}</Text>
-          <View style={[s.circleBarBtn, { opacity: 0 }]} />
+
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => setScreenView("publicView")}
+              style={[
+                styles.rampBtn,
+                nestedScreen === "publicView" && styles.rampBtnActive,
+              ]}
+            >
+              {nestedScreen === "publicView" && (
+                <LinearGradient
+                  colors={C.brandGlow}
+                  style={StyleSheet.absoluteFillObject}
+                />
+              )}
+              <Text
+                style={[
+                  styles.rampText,
+                  nestedScreen === "publicView" && styles.rampTextActive,
+                ]}
+              >
+                Public Profile
+              </Text>
+            </TouchableOpacity>
+          </BlurView>
         </View>
 
-        {/* WORKSPACE PORTAL DISPATCH ROUTER SWITCH */}
-        {currentView === "progress" ? renderProgressView() : renderAmendmentView()}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollBody}
+        >
+          {/* HERO PROFILE GLASS CARD */}
+          <BlurView intensity={30} tint="light" style={styles.heroGlassCard}>
+            <View style={styles.avatarLayoutRow}>
+              <View style={styles.avatarGlassContainer}>
+                <Text style={styles.avatarEmoji}>👑</Text>
+                <View
+                  style={[
+                    styles.statusPulseNode,
+                    { backgroundColor: isOnline ? C.neonGreen : C.textMuted },
+                  ]}
+                />
+              </View>
+              <View style={{ flex: 1, marginLeft: 18 }}>
+                <Text style={styles.proNameText}>{proData.name}</Text>
+                <Text style={styles.proCategoryText}>{proData.category}</Text>
+                <View style={styles.ratingBadgeRow}>
+                  <Text style={{ color: C.neonAmber, fontSize: 12 }}>★ </Text>
+                  <Text style={styles.ratingText}>
+                    {proData.rating}{" "}
+                    <Text style={{ color: C.textMuted }}>
+                      ({proData.totalReviews} verified checks)
+                    </Text>
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </BlurView>
+
+          {/* ─── SUBSCREEN LAYER 1: MANAGEMENT DASHBOARD ─── */}
+          {nestedScreen === "dashboard" && (
+            <View style={styles.viewSwitchAnimationWrapper}>
+              {/* LIVE OPERATION REGULATION SYSTEM */}
+              <BlurView
+                intensity={15}
+                tint="light"
+                style={styles.dutyGlassCard}
+              >
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text style={styles.cardHeadingTitle}>Operation Mode</Text>
+                  <Text style={styles.cardSubTextBody}>
+                    {isOnline
+                      ? "Broadcasting live tracking matrix channels to local nodes"
+                      : "Console offline · delta channel stream suspended"}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => setIsOnline(!isOnline)}
+                >
+                  <LinearGradient
+                    colors={isOnline ? C.successGlow : C.offlineGlow}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.toggleSwitchPill}
+                  >
+                    <Text
+                      style={[
+                        styles.toggleSwitchText,
+                        !isOnline && { color: C.textSecondary },
+                      ]}
+                    >
+                      {isOnline ? "ACTIVE" : "STANDBY"}
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </BlurView>
+
+              {/* HIGH-FIDELITY WALLET CONTAINER */}
+              <SectionLabel icon="⚡" label="Financial Escrow Matrix" />
+              <LinearGradient
+                colors={C.darkGlow}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.walletPremiumCard}
+              >
+                <View style={styles.glassReflectionOverlay} />
+                <View>
+                  <Text style={styles.walletCardLabel}>
+                    Available Clearance Balance
+                  </Text>
+                  <Text style={styles.walletBalanceValueString}>
+                    {proData.walletBalance}
+                  </Text>
+                </View>
+                <TouchableOpacity activeOpacity={0.8}>
+                  <BlurView
+                    intensity={40}
+                    tint="light"
+                    style={styles.glassActionBtn}
+                  >
+                    <Text style={styles.glassActionBtnText}>Disburse</Text>
+                  </BlurView>
+                </TouchableOpacity>
+              </LinearGradient>
+
+              {/* PERFORMANCE STATISTICS INTERFACE */}
+              <SectionLabel icon="📊" label="System Telemetry" />
+              <View style={styles.telemetryGridRow}>
+                <BlurView
+                  intensity={15}
+                  tint="light"
+                  style={styles.telemetryMetricSquare}
+                >
+                  <Text
+                    style={[styles.metricValueString, { color: C.neonCyan }]}
+                  >
+                    {proData.jobsDone}
+                  </Text>
+                  <Text style={styles.metricLabelSubString}>
+                    Completed Pipelines
+                  </Text>
+                </BlurView>
+                <BlurView
+                  intensity={15}
+                  tint="light"
+                  style={styles.telemetryMetricSquare}
+                >
+                  <Text
+                    style={[styles.metricValueString, { color: C.neonBrand }]}
+                  >
+                    {proData.experience}
+                  </Text>
+                  <Text style={styles.metricLabelSubString}>
+                    Uptime Lifecycle
+                  </Text>
+                </BlurView>
+              </View>
+
+              {/* ADMINISTRATIVE ACCESS HUB */}
+              <SectionLabel icon="⚙️" label="Control Directives" />
+              <GlassConsoleLink
+                icon="🧬"
+                label="Modify Structural Data Fields"
+              />
+              <GlassConsoleLink
+                icon="💎"
+                label="Calibrate Standard Rates Model"
+              />
+              <GlassConsoleLink
+                icon="🛡️"
+                label="Verify Identity Signatures & Token Keys"
+              />
+            </View>
+          )}
+
+          {/* ─── SUBSCREEN LAYER 2: DESIGN SHOWCASE VIEW ─── */}
+          {nestedScreen === "publicView" && (
+            <View style={styles.viewSwitchAnimationWrapper}>
+              {/* COMPREHENSIVE BIOGRAPHY PROFILE SUMMARY */}
+              <SectionLabel icon="📜" label="Executive Abstract" />
+              <BlurView
+                intensity={15}
+                tint="light"
+                style={styles.abstractGlassCard}
+              >
+                <Text style={styles.abstractParagraphBodyText}>
+                  Senior computing engineer specialized in crafting
+                  high-efficiency software architectures and native client
+                  runtime instances. Expert in performance mapping across cloud
+                  relational database engines.
+                </Text>
+              </BlurView>
+
+              {/* RATE PARAMETERS CONSOLE SUMMARY */}
+              <SectionLabel icon="🏷️" label="Value Mapping Model" />
+              <BlurView
+                intensity={15}
+                tint="light"
+                style={styles.rateBadgeStripRow}
+              >
+                <Text style={styles.rateStripLeftLabel}>
+                  Base Computation Cost
+                </Text>
+                <Text style={styles.rateStripRightAmount}>
+                  {proData.hourlyRate}
+                </Text>
+              </BlurView>
+
+              {/* SKILLS TAG ARRAYS CHIPS MATRIX */}
+              <SectionLabel
+                icon="🚀"
+                label="Engine Architecture Proficiencies"
+              />
+              <View style={styles.skillsTagWrapperContainerFlexBox}>
+                {proData.skills.map((skill, i) => (
+                  <BlurView
+                    key={i}
+                    intensity={30}
+                    tint="light"
+                    style={styles.skillMicroChipCard}
+                  >
+                    <Text style={styles.skillMicroChipStringText}>
+                      ◆ {skill}
+                    </Text>
+                  </BlurView>
+                ))}
+              </View>
+
+              {/* CLIENT REVIEW REPUTATION LOGS */}
+              <SectionLabel icon="✦" label="Verified Review Attestations" />
+              {proData.recentReviews.map((review, i) => (
+                <BlurView
+                  key={i}
+                  intensity={15}
+                  tint="light"
+                  style={styles.reputationLogCardBox}
+                >
+                  <View style={styles.reputationLogHeaderSplitRow}>
+                    <Text style={styles.reputationReviewerNameTitle}>
+                      {review.name}
+                    </Text>
+                    <Text style={styles.reputationReviewerRatingValue}>
+                      ★ {review.rate}
+                    </Text>
+                  </View>
+                  <Text style={styles.reputationReviewBodyTextString}>
+                    "{review.text}"
+                  </Text>
+                </BlurView>
+              ))}
+            </View>
+          )}
+          <View style={{ height: 120 }} />
+        </ScrollView>
       </SafeAreaView>
-      <AppBottomTab />
     </View>
   );
 }
 
-// ─── MASTER SYSTEM CORE DESIGN STYLE SHEET MAPPINGS ───────────
-const s = StyleSheet.create({
-  container: { flex: 1 },
-  ambientOrb: { position: "absolute", width: sc(260), height: sc(260), borderRadius: sc(130), opacity: 0.8 },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 24, paddingTop: Platform.OS === 'ios' ? 10 : 20, marginBottom: 15 },
-  circleBarBtn: { width: sc(40), height: sc(40), borderRadius: 14, backgroundColor: C.white, borderWidth: 1, borderColor: C.inputBorder, justifyContent: "center", alignItems: "center", elevation: 1 },
-  headerTitleText: { fontSize: sc(17), fontWeight: "900", color: C.textDark, letterSpacing: -0.4 },
-  scrollArea: { paddingHorizontal: 24, paddingBottom: 120, paddingTop: 5 },
-  
-  // Group Labels Layout
-  sectionLabelRow: { paddingHorizontal: 4, marginTop: 24, marginBottom: 12, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  sectionLabelText: { fontSize: 12, fontWeight: "800", color: C.labelGray, textTransform: "uppercase", letterSpacing: 1 },
-  sectionActionText: { fontSize: 13, fontWeight: "700", color: C.p2, letterSpacing: -0.1 },
-  subViewDescription: { fontSize: sc(12), color: C.labelGray, paddingHorizontal: 4, marginBottom: 20, lineHeight: 18, fontWeight: "500" },
+// ─── TRANSLATED REUSABLE CONSOLE UI PARTS ─────────────────────
+const SectionLabel = ({ icon, label }) => (
+  <View style={styles.labelSectionWrapperRow}>
+    <Text style={styles.labelSectionIconTextValue}>{icon}</Text>
+    <Text style={styles.labelSectionTextLabelString}>{label}</Text>
+  </View>
+);
 
-  // Live Timer Bounding Box Configurations
-  timerWrapper: { marginBottom: 5, borderRadius: 28, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.7)', elevation: 3, shadowColor: C.p3, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 12 },
-  timerGlassBlock: { padding: 20, backgroundColor: "rgba(255, 255, 255, 0.45)", alignItems: "center" },
-  timerMetaHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 },
-  timerHeaderTitle: { fontSize: 10, fontWeight: "900", color: C.p2, letterSpacing: 0.8 },
-  timerValueText: { fontSize: sc(36), fontWeight: "900", color: C.textDark, letterSpacing: -0.6 },
-  timerControlToggleBtn: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderColor: C.inputBorder, backgroundColor: C.white, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, marginTop: 14, elevation: 1 },
-  timerToggleText: { fontSize: 11, fontWeight: "800" },
+const GlassConsoleLink = ({ icon, label }) => (
+  <BlurView intensity={15} tint="light" style={styles.consoleLinkRowBar}>
+    <View style={styles.consoleLinkIconWrapperBox}>
+      <Text style={{ fontSize: 15, color: "#FFF" }}>{icon}</Text>
+    </View>
+    <Text style={styles.consoleLinkLabelTextString}>{label}</Text>
+    <Text style={styles.consoleLinkArrowIndicatorSymbol}>›</Text>
+  </BlurView>
+);
 
-  // Visual Evidence Management Box
-  photoRowContainer: { flexDirection: "row", justifyContent: "space-between", gap: 14 },
-  photoTouchNode: { flex: 1, height: sc(115), borderRadius: 24, overflow: "hidden", borderWidth: 1, borderColor: "rgba(255,255,255,0.7)", elevation: 3, shadowColor: C.p3, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 10 },
-  photoGlassBox: { flex: 1, backgroundColor: "rgba(255, 255, 255, 0.45)", justifyContent: "center", alignItems: "center", gap: 8 },
-  photoActiveGlass: { borderPadding: 0 },
-  cameraIconBox: { width: 34, height: 34, borderRadius: 10, backgroundColor: C.white, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: C.inputBorder },
-  photoBoxText: { fontSize: sc(12), fontWeight: "800", color: C.textDark, letterSpacing: -0.1 },
-  capturedImage: { width: "100%", height: "100%", borderRadius: 22 },
-  photoStatusIndicator: { position: "absolute", top: 8, right: 8, width: 20, height: 20, borderRadius: 10, justifyContent: "center", alignItems: "center", elevation: 2 },
-  photoFloatingLabel: { position: "absolute", bottom: 8, left: 10, backgroundColor: "rgba(26,23,64,0.75)", color: C.white, fontSize: 9, fontWeight: "800", paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, overflow: "hidden" },
+// ─── STYLES ARCHITECTURE SHEET SCHEMA ─────────────────────────
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#07051A" },
 
-  // Micro Checkpoint Configurations
-  checklistCardWrapper: { borderRadius: 24, overflow: "hidden", borderWidth: 1, borderColor: "rgba(255,255,255,0.7)", elevation: 3, shadowColor: C.p3, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 12 },
-  checklistGlassBlock: { padding: 4, backgroundColor: "rgba(255, 255, 255, 0.45)" },
-  checkRowItem: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
-  checkRowItemActive: { backgroundColor: "rgba(91,76,240,0.02)" },
-  itemBorderTop: { borderTopWidth: 1, borderTopColor: "rgba(232, 229, 255, 0.5)" },
-  checkboxOuterShell: { width: 18, height: 18, borderRadius: 5, borderWidth: 1.5, borderColor: C.inputBorder, justifyContent: "center", alignItems: "center" },
-  checkItemText: { fontSize: sc(13), fontWeight: "700", color: C.textDark, flex: 1, letterSpacing: -0.1 },
-  checkItemTextDone: { color: C.labelGray, textDecorationLine: "line-through", fontWeight: "500" },
+  // Tangible Layer Blobs for Backlighting Glass surfaces
+  neonOrb1: {
+    position: "absolute",
+    width: 350,
+    height: 350,
+    borderRadius: 175,
+    backgroundColor: "rgba(140, 127, 255, 0.08)",
+    top: -80,
+    left: -90,
+  },
+  neonOrb2: {
+    position: "absolute",
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    backgroundColor: "rgba(6, 182, 212, 0.05)",
+    bottom: 120,
+    right: -60,
+  },
+  neonOrb3: {
+    position: "absolute",
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "rgba(245, 158, 11, 0.04)",
+    top: height * 0.35,
+    left: width * 0.4,
+  },
 
-  // Runtime Invoice Modifiers
-  amendCardWrapper: { marginBottom: 15, borderRadius: 28, overflow: "hidden", borderWidth: 1, borderColor: "rgba(255,255,255,0.7)", elevation: 3, shadowColor: C.p3, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 12 },
-  amendGlassCard: { flexDirection: "row", padding: 16, backgroundColor: "rgba(255, 255, 255, 0.45)", alignItems: "center" },
-  spareIconContainer: { width: sc(36), height: sc(36), borderRadius: 11, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: C.inputBorder, backgroundColor: C.white },
-  amendItemTitle: { fontSize: sc(14), fontWeight: "800", color: C.textDark, letterSpacing: -0.1 },
-  amendItemSub: { fontSize: sc(11), color: C.labelGray, marginTop: 3, fontWeight: "600" },
-  qtyAdjusterContainer: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: C.white, padding: 4, borderRadius: 12, borderWidth: 1, borderColor: C.inputBorder },
-  qtyCircleBtn: { width: 24, height: 24, borderRadius: 7, backgroundColor: C.inputBg, justifyContent: "center", alignItems: "center" },
-  qtyDisplayValText: { fontSize: sc(13), fontWeight: "900", color: C.p2 },
-  extraLabelTextField: { flex: 1, fontSize: sc(13), fontWeight: "700", color: C.textDark, marginLeft: 14, letterSpacing: -0.1 },
-  priceOptionBtn: { backgroundColor: C.white, borderWidth: 1, borderColor: C.inputBorder, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, marginLeft: 6 },
-  priceOptionBtnActive: { borderColor: C.p2, backgroundColor: C.inputBg },
-  priceOptionText: { fontSize: 11, fontWeight: "700", color: C.textDark },
-  approvalNoticeTitle: { fontSize: sc(14), fontWeight: "800", color: C.textDark, letterSpacing: -0.1 },
-  approvalNoticeBodyText: { fontSize: sc(12), color: C.labelGray, fontWeight: "500", marginTop: 2, lineHeight: 16 },
-  badgeCheckEmpty: { width: 18, height: 18, borderRadius: 6, borderWidth: 1.5, borderColor: C.inputBorder },
-  badgeCheckSuccess: { width: 18, height: 18, borderRadius: 6, justifyContent: "center", alignItems: "center" },
+  header: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 6 },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: C.textPrimary,
+    letterSpacing: -0.3,
+    textAlign: "center",
+  },
 
-  // Global Structural CTA Frameworks
-  solidCtaBtn: { height: sc(54), borderRadius: 18, overflow: "hidden", elevation: 4, shadowColor: C.p2, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, marginTop: 20 },
-  ctaBtnGradient: { flex: 1, justifyContent: "center", alignItems: "center" },
-  ctaBtnText: { color: C.white, fontSize: sc(15), fontWeight: "900", letterSpacing: -0.1 },
-  dashedActionBtn: { flexDirection: "row", justifyContent: "center", alignItems: "center", borderStyle: "dashed", borderWidth: 1.5, borderColor: C.p1, backgroundColor: "rgba(140, 127, 255, 0.04)", padding: 16, borderRadius: 22, marginTop: 14, marginHorizontal: 4 },
-  dashedActionText: { fontSize: sc(13), color: C.p2, fontWeight: "800" },
+  // Segment Navigation Styling Control
+  segmentedRamp: {
+    flexDirection: "row",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    padding: 4,
+    borderRadius: 16,
+    marginTop: 18,
+    borderWidth: 1,
+    borderColor: C.glassBorder,
+    overflow: "hidden",
+  },
+  rampBtn: {
+    flex: 1,
+    paddingVertical: 11,
+    alignItems: "center",
+    borderRadius: 12,
+    overflow: "hidden",
+    position: "relative",
+  },
+  rampBtnActive: {
+    shadowColor: C.neonBrand,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  rampText: { fontSize: 13, fontWeight: "600", color: C.textSecondary },
+  rampTextActive: { color: C.textPrimary, fontWeight: "800" },
+
+  scrollBody: { paddingHorizontal: 24, paddingTop: 22 },
+
+  // Main Glass Card Geometry
+  heroGlassCard: {
+    padding: 20,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: C.glassBorder,
+    backgroundColor: C.glassCard,
+    overflow: "hidden",
+    marginBottom: 14,
+  },
+  avatarLayoutRow: { flexDirection: "row", alignItems: "center" },
+  avatarGlassContainer: {
+    width: 68,
+    height: 68,
+    borderRadius: 22,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+    borderWidth: 1,
+    borderColor: C.glassBorder,
+  },
+  avatarEmoji: { fontSize: 30 },
+  statusPulseNode: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2.5,
+    borderColor: "#07051A",
+  },
+  proNameText: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: C.textPrimary,
+    letterSpacing: -0.2,
+  },
+  proCategoryText: {
+    fontSize: 13,
+    color: C.neonBrand,
+    marginTop: 2,
+    fontWeight: "700",
+  },
+  ratingBadgeRow: { flexDirection: "row", alignItems: "center", marginTop: 5 },
+  ratingText: { fontSize: 12, fontWeight: "700", color: C.textPrimary },
+
+  labelSectionWrapperRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 26,
+    marginBottom: 12,
+  },
+  labelSectionIconTextValue: { fontSize: 14, marginRight: 8 },
+  labelSectionTextLabelString: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: C.textSecondary,
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+  },
+
+  viewSwitchAnimationWrapper: { width: "100%" },
+
+  // Management Dash Modules Style Design
+  dutyGlassCard: {
+    padding: 18,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: C.glassBorder,
+    backgroundColor: C.glassCard,
+    overflow: "hidden",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  cardHeadingTitle: { fontSize: 14, fontWeight: "800", color: C.textPrimary },
+  cardSubTextBody: {
+    fontSize: 11,
+    color: C.textSecondary,
+    marginTop: 3,
+    lineHeight: 16,
+  },
+  toggleSwitchPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  toggleSwitchText: {
+    color: C.textPrimary,
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+  },
+
+  walletPremiumCard: {
+    borderRadius: 24,
+    padding: 22,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 2,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    overflow: "hidden",
+    shadowColor: C.p3,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 6,
+  },
+  glassReflectionOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(255,255,255,0.03)",
+  },
+  walletCardLabel: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.65)",
+    fontWeight: "500",
+  },
+  walletBalanceValueString: {
+    fontSize: 28,
+    fontWeight: "900",
+    color: C.textPrimary,
+    marginTop: 2,
+    letterSpacing: -0.5,
+  },
+  glassActionBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+    backgroundColor: "rgba(255,255,255,0.1)",
+  },
+  glassActionBtnText: { color: C.textPrimary, fontSize: 13, fontWeight: "800" },
+
+  telemetryGridRow: { flexDirection: "row", gap: 12 },
+  telemetryMetricSquare: {
+    flex: 1,
+    padding: 20,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: C.glassBorder,
+    backgroundColor: C.glassCard,
+    overflow: "hidden",
+  },
+  metricValueString: { fontSize: 26, fontWeight: "900", letterSpacing: -0.5 },
+  metricLabelSubString: {
+    fontSize: 12,
+    color: C.textSecondary,
+    marginTop: 5,
+    fontWeight: "600",
+  },
+
+  consoleLinkRowBar: {
+    padding: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: C.glassBorder,
+    backgroundColor: C.glassCard,
+    overflow: "hidden",
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  consoleLinkIconWrapperBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: C.glassBorder,
+  },
+  consoleLinkLabelTextString: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+    color: C.textPrimary,
+    marginLeft: 14,
+  },
+  consoleLinkArrowIndicatorSymbol: {
+    fontSize: 18,
+    color: C.textMuted,
+    fontWeight: "600",
+  },
+
+  // Public Showcase Profiling Modules Design
+  abstractGlassCard: {
+    padding: 18,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: C.glassBorder,
+    backgroundColor: C.glassCard,
+    overflow: "hidden",
+  },
+  abstractParagraphBodyText: {
+    fontSize: 13,
+    color: C.textSecondary,
+    lineHeight: 22,
+    fontWeight: "500",
+  },
+  rateBadgeStripRow: {
+    padding: 18,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: C.glassBorder,
+    backgroundColor: C.glassCard,
+    overflow: "hidden",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  rateStripLeftLabel: { fontSize: 13, fontWeight: "600", color: C.textPrimary },
+  rateStripRightAmount: { fontSize: 17, fontWeight: "800", color: C.neonCyan },
+
+  skillsTagWrapperContainerFlexBox: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  skillMicroChipCard: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: "rgba(140, 127, 255, 0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(140, 127, 255, 0.15)",
+    overflow: "hidden",
+  },
+  skillMicroChipStringText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: C.neonBrand,
+  },
+
+  reputationLogCardBox: {
+    padding: 18,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: C.glassBorder,
+    backgroundColor: C.glassCard,
+    overflow: "hidden",
+    marginBottom: 12,
+  },
+  reputationLogHeaderSplitRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  reputationReviewerNameTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: C.textPrimary,
+  },
+  reputationReviewerRatingValue: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: C.neonAmber,
+  },
+  reputationReviewBodyTextString: {
+    fontSize: 13,
+    color: C.textSecondary,
+    lineHeight: 20,
+    fontStyle: "italic",
+  },
 });

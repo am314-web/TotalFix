@@ -1,5 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Modal,
   View,
   Text,
   StyleSheet,
@@ -13,6 +17,8 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { router } from "expo-router";
 import {
   Wrench,
   Clock,
@@ -27,6 +33,10 @@ import {
   Sparkles,
   DollarSign,
 } from "lucide-react-native";
+import ProBottomTab from "../components/ProBottomTab";
+import { supabase } from "../services/supabase";
+import { SESSION_KEY } from "../services/session";
+import { createNotificationEvent } from "../services/supabaseBookingService";
 
 const { width, height } = Dimensions.get("window");
 const sc = (n) => (width / 390) * n;
@@ -49,29 +59,188 @@ const C = {
 };
 
 // ─── MOCK ASSIGNED JOBS ───────────────────────────────────────
-const ASSIGNED_JOBS = [
-  {
-    id: "JOB-9921",
-    customer: "Alok Mourya",
-    service: "Split AC Jet Service x2",
-    payout: "₹2,648",
-    time: "14:00 - 15:30 (Today)",
-    address: "B-402, Skyline Residency, Satellite, Ahmedabad",
-    type: "Premium Cleaning",
-  },
-  {
-    id: "JOB-9874",
-    customer: "Amit Patel",
-    service: "AC Gas Top-up (R32)",
-    payout: "₹850",
-    time: "17:00 - 18:00 (Today)",
-    address: "A-12, Green Acres, Vastrapur, Ahmedabad",
-    type: "Repair",
-  }
-];
+const SERVICE_PRICES = {
+  plumber: "₹499",
+  carpenter: "₹599",
+  electrician: "₹399",
+  painter: "₹999",
+  cleaner: "₹699",
+  mechanic: "₹799",
+  gardener: "₹499",
+  tailor: "₹399",
+  welder: "₹899",
+  contractor: "₹1,499",
+  laundry: "₹299",
+  security: "₹1,299",
+};
 
 export default function ProWorkerDashboard() {
   const [isOnline, setIsOnline] = useState(true);
+  const [loadingJobs, setLoadingJobs] = useState(true);
+  const [assignedJobs, setAssignedJobs] = useState([]);
+  const [proName, setProName] = useState("Professional");
+  const [proUserId, setProUserId] = useState("");
+  const [selectedJob, setSelectedJob] = useState(null);
+  const [actionLoadingId, setActionLoadingId] = useState("");
+  const getPrimaryImageUrl = (rawValue) => {
+    if (!rawValue) return "";
+    if (Array.isArray(rawValue)) return rawValue[0] || "";
+    if (typeof rawValue !== "string") return "";
+    const trimmed = rawValue.trim();
+    if (!trimmed) return "";
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed[0] || "";
+    } catch {}
+    return trimmed.split(",").map((x) => x.trim()).filter(Boolean)[0] || "";
+  };
+
+  const normalizeType = (value) =>
+    String(value || "")
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, "");
+
+  const toServiceKey = (value) => {
+    const normalized = normalizeType(value);
+    const aliases = {
+      plumbing: "plumber",
+      plumber: "plumber",
+      electrical: "electrician",
+      electrician: "electrician",
+      acrepair: "mechanic",
+      acservice: "mechanic",
+      cleaning: "cleaner",
+      cleaner: "cleaner",
+      painting: "painter",
+      painter: "painter",
+    };
+    return aliases[normalized] || normalized;
+  };
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return "Scheduled date";
+    const parts = String(dateStr).split("-");
+    if (parts.length !== 3) return String(dateStr);
+    const date = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  };
+
+  useEffect(() => {
+    const loadAssignedJobs = async () => {
+      try {
+        setLoadingJobs(true);
+        const raw = await AsyncStorage.getItem(SESSION_KEY);
+        if (!raw) {
+          setAssignedJobs([]);
+          return;
+        }
+
+        const session = JSON.parse(raw);
+        const userId = session?.uid;
+        if (!userId) {
+          setAssignedJobs([]);
+          return;
+        }
+        setProUserId(userId);
+
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("name, service_type")
+          .eq("id", userId)
+          .maybeSingle();
+
+        if (profileData?.name) setProName(profileData.name);
+        const proTypeKey = toServiceKey(profileData?.service_type);
+
+        const { data: bookingsData, error: bookingsError } = await supabase
+          .from("bookings")
+          .select("*")
+          .eq("status", "pending")
+          .order("created_at", { ascending: false });
+
+        if (bookingsError) throw bookingsError;
+
+        const mapped = (bookingsData || [])
+          .filter((b) => b?.status === "pending")
+          .map((b) => ({
+            id: String(b.id),
+            customer: b.client_id || "Client",
+            service: `${(b.service_type || "service").toString().replace(/\b\w/g, (c) => c.toUpperCase())} Service`,
+            payout: SERVICE_PRICES[b.service_type] || "₹499",
+            time: `${b.scheduled_time || "Time TBD"} (${formatDate(b.scheduled_date)})`,
+            address: "Address shared by client",
+            type: b.status === "accepted" ? "Accepted Job" : "New Request",
+            status: b.status,
+            notes: b.notes || "",
+            imageUrl: getPrimaryImageUrl(b.image_url),
+            serviceType: b.service_type || "",
+            scheduledDate: b.scheduled_date || "",
+            scheduledTime: b.scheduled_time || "",
+            bookingId: b.id,
+          }));
+
+        setAssignedJobs(mapped);
+      } catch (error) {
+        console.error("Failed loading professional dashboard jobs:", error);
+        setAssignedJobs([]);
+      } finally {
+        setLoadingJobs(false);
+      }
+    };
+
+    loadAssignedJobs();
+  }, []);
+
+  const handleAcceptJob = async (job) => {
+    try {
+      if (!proUserId) return;
+      setActionLoadingId(String(job.bookingId));
+      const { error } = await supabase
+        .from("bookings")
+        .update({
+          status: "accepted",
+          professional_id: proUserId,
+        })
+        .eq("id", job.bookingId);
+      if (error) throw error;
+      await createNotificationEvent({
+        recipientId: job.customer,
+        eventType: "job_accepted",
+        title: "Your booking was accepted",
+        body: `Professional accepted booking UC-${job.bookingId}.`,
+        bookingId: job.bookingId,
+      });
+      setAssignedJobs((prev) => prev.filter((j) => j.bookingId !== job.bookingId));
+    } catch (error) {
+      Alert.alert("Action Failed", error?.message || "Could not accept this booking.");
+    } finally {
+      setActionLoadingId("");
+    }
+  };
+
+  const handleDeclineJob = async (job) => {
+    try {
+      setActionLoadingId(String(job.bookingId));
+      const { error } = await supabase
+        .from("bookings")
+        .update({ status: "rejected" })
+        .eq("id", job.bookingId);
+      if (error) throw error;
+      await createNotificationEvent({
+        recipientId: job.customer,
+        eventType: "job_declined",
+        title: "Your booking was declined",
+        body: `Professional declined booking UC-${job.bookingId}.`,
+        bookingId: job.bookingId,
+      });
+      setAssignedJobs((prev) => prev.filter((j) => j.bookingId !== job.bookingId));
+    } catch (error) {
+      Alert.alert("Action Failed", error?.message || "Could not decline this booking.");
+    } finally {
+      setActionLoadingId("");
+    }
+  };
 
   const SectionLabel = ({ label, value }) => (
     <View style={s.sectionLabelRow}>
@@ -95,7 +264,7 @@ export default function ProWorkerDashboard() {
         <View style={s.header}>
           <View>
             <Text style={s.welcomeText}>Welcome back,</Text>
-            <Text style={s.proNameText}>Rahul Sharma</Text>
+            <Text style={s.proNameText}>{proName}</Text>
           </View>
           
           {/* Custom Frosted Toggle Pill */}
@@ -149,10 +318,15 @@ export default function ProWorkerDashboard() {
           </View>
 
           {/* BOOKINGS LIST VIEW */}
-          <SectionLabel label="Assigned Schedule" value={`${ASSIGNED_JOBS.length} Bookings Remaining`} />
+          <SectionLabel label="Assigned Schedule" value={`${assignedJobs.length} Bookings Remaining`} />
 
-          {isOnline ? (
-            ASSIGNED_JOBS.map((job) => (
+          {loadingJobs ? (
+            <View style={{ paddingVertical: 30, alignItems: "center" }}>
+              <ActivityIndicator size="small" color={C.p2} />
+              <Text style={{ marginTop: 8, color: C.labelGray, fontWeight: "700" }}>Loading bookings...</Text>
+            </View>
+          ) : isOnline ? (
+            assignedJobs.length > 0 ? assignedJobs.map((job) => (
               <View key={job.id} style={s.jobCardWrapper}>
                 <BlurView intensity={Platform.OS === 'ios' ? 45 : 95} tint="light" style={s.jobGlassCard}>
                   
@@ -184,19 +358,50 @@ export default function ProWorkerDashboard() {
                       <Text style={s.logisticText} numberOfLines={1}>{job.address}</Text>
                     </View>
                   </View>
+                  {job.imageUrl ? (
+                    <Image source={{ uri: job.imageUrl }} style={s.jobImage} resizeMode="cover" />
+                  ) : null}
+                  <TouchableOpacity
+                    style={s.fullDetailBtn}
+                    activeOpacity={0.8}
+                    onPress={() => setSelectedJob(job)}
+                  >
+                    <Text style={s.fullDetailBtnText}>Full Detail</Text>
+                  </TouchableOpacity>
+                  {job.status === "accepted" ? (
+                    <TouchableOpacity
+                      style={[s.fullDetailBtn, { marginLeft: 8 }]}
+                      activeOpacity={0.8}
+                      onPress={() => router.push({ pathname: "/pro-chat", params: { bookingId: String(job.bookingId) } })}
+                    >
+                      <Text style={s.fullDetailBtnText}>Chat</Text>
+                    </TouchableOpacity>
+                  ) : null}
 
                   <View style={s.cardDividerLine} />
 
                   {/* Operational Interactive Action Row */}
                   <View style={s.cardActionsRow}>
-                    <TouchableOpacity style={s.rejectBtn} activeOpacity={0.7}>
+                    <TouchableOpacity
+                      style={s.rejectBtn}
+                      activeOpacity={0.7}
+                      onPress={() => handleDeclineJob(job)}
+                      disabled={actionLoadingId === String(job.bookingId)}
+                    >
                       <XCircle size={15} color="#EF4444" style={{ marginRight: 6 }} />
                       <Text style={s.rejectBtnText}>Decline</Text>
                     </TouchableOpacity>
                     
-                    <TouchableOpacity style={s.acceptBtn} activeOpacity={0.85}>
+                    <TouchableOpacity
+                      style={s.acceptBtn}
+                      activeOpacity={0.85}
+                      onPress={() => handleAcceptJob(job)}
+                      disabled={actionLoadingId === String(job.bookingId)}
+                    >
                       <LinearGradient colors={[C.p1, C.p2]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.acceptGradient}>
-                        <Text style={s.acceptBtnText}>Start Job</Text>
+                        <Text style={s.acceptBtnText}>
+                          {actionLoadingId === String(job.bookingId) ? "Updating..." : "Accept"}
+                        </Text>
                         <ChevronRight size={14} color={C.white} strokeWidth={2.5} />
                       </LinearGradient>
                     </TouchableOpacity>
@@ -204,7 +409,15 @@ export default function ProWorkerDashboard() {
 
                 </BlurView>
               </View>
-            ))
+            )) : (
+              <View style={s.offlinePlaceholderState}>
+                <View style={s.emptyIconBoundary}>
+                  <Briefcase size={sc(32)} color={C.textMuted} />
+                </View>
+                <Text style={s.offlineStateTitle}>No bookings yet</Text>
+                <Text style={s.offlineStateSub}>When clients create matching bookings, they will appear here automatically.</Text>
+              </View>
+            )
           ) : (
             /* OFF-STATE DISPLAY CONFIGURATION */
             <View style={s.offlinePlaceholderState}>
@@ -218,6 +431,28 @@ export default function ProWorkerDashboard() {
 
         </ScrollView>
       </SafeAreaView>
+      <Modal visible={Boolean(selectedJob)} transparent animationType="fade" onRequestClose={() => setSelectedJob(null)}>
+        <View style={s.modalBackdrop}>
+          <View style={s.modalCard}>
+            <Text style={s.modalTitle}>Booking Full Detail</Text>
+            <Text style={s.modalLine}>ID: UC-{selectedJob?.bookingId}</Text>
+            <Text style={s.modalLine}>Service: {selectedJob?.service}</Text>
+            <Text style={s.modalLine}>Status: {(selectedJob?.status || "").toUpperCase()}</Text>
+            <Text style={s.modalLine}>Client: {selectedJob?.customer}</Text>
+            <Text style={s.modalLine}>Date: {selectedJob?.scheduledDate}</Text>
+            <Text style={s.modalLine}>Time: {selectedJob?.scheduledTime}</Text>
+            <Text style={s.modalLine}>Address: {selectedJob?.address}</Text>
+            <Text style={s.modalLine}>Issue: {selectedJob?.notes || "No extra notes"}</Text>
+            {selectedJob?.imageUrl ? (
+              <Image source={{ uri: selectedJob.imageUrl }} style={s.modalImage} resizeMode="cover" />
+            ) : null}
+            <TouchableOpacity style={s.modalCloseBtn} onPress={() => setSelectedJob(null)} activeOpacity={0.8}>
+              <Text style={s.modalCloseText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+      <ProBottomTab />
     </View>
   );
 }
@@ -276,6 +511,18 @@ const s = StyleSheet.create({
   logisticRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   iconCellContainer: { width: sc(26), height: sc(26), borderRadius: 8, backgroundColor: C.white, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: C.inputBorder },
   logisticText: { fontSize: sc(13), color: C.textDark, fontWeight: "600", opacity: 0.85 },
+  jobImage: { width: "100%", height: sc(120), borderRadius: 12, marginBottom: 10 },
+  fullDetailBtn: {
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(91, 76, 240, 0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(91, 76, 240, 0.2)",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  fullDetailBtnText: { color: C.p2, fontWeight: "800", fontSize: sc(12) },
   cardDividerLine: { height: 1, backgroundColor: "rgba(232, 229, 255, 0.7)", marginBottom: 14 },
   
   // Interactive Controls Setup
@@ -290,5 +537,29 @@ const s = StyleSheet.create({
   offlinePlaceholderState: { paddingVertical: height * 0.1, alignItems: "center", paddingHorizontal: 36 },
   emptyIconBoundary: { width: sc(64), height: sc(64), borderRadius: 22, backgroundColor: C.inputBg, justifyContent: "center", alignItems: "center", marginBottom: 16, borderWidth: 1, borderColor: C.inputBorder },
   offlineStateTitle: { fontSize: sc(16), fontWeight: "800", color: C.textDark },
-  offlineStateSub: { fontSize: sc(12), color: C.labelGray, textAlign: "center", marginTop: 6, lineHeight: 18, fontWeight: "500" }
+  offlineStateSub: { fontSize: sc(12), color: C.labelGray, textAlign: "center", marginTop: 6, lineHeight: 18, fontWeight: "500" },
+
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+  },
+  modalCard: {
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 16,
+  },
+  modalTitle: { fontSize: sc(16), fontWeight: "900", color: C.textDark, marginBottom: 8 },
+  modalLine: { fontSize: sc(12), color: C.textDark, marginBottom: 4, fontWeight: "600" },
+  modalImage: { width: "100%", height: sc(160), borderRadius: 12, marginTop: 8 },
+  modalCloseBtn: {
+    marginTop: 12,
+    backgroundColor: C.p2,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  modalCloseText: { color: "#fff", fontWeight: "800" },
 });
+

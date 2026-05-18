@@ -25,7 +25,7 @@ import {
   TrendingDown,
   ArrowRightLeft,
 } from "lucide-react-native";
-import AppBottomTab from "../components/AppBottomTab";
+import ProBottomTab from "../components/ProBottomTab";
 
 const { width, height } = Dimensions.get("window");
 const sc = (n) => (width / 390) * n;
@@ -235,7 +235,7 @@ export default function ProEarningsDashboard() {
 
         </ScrollView>
       </SafeAreaView>
-      <AppBottomTab />
+      <ProBottomTab />
     </View>
   );
 }

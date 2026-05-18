@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -9,10 +10,12 @@ import {
     RotateCcw,
     SlidersHorizontal,
     XCircle,
+    ChevronRight
 } from "lucide-react-native";
 import AppBottomTab from "../components/AppBottomTab";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+    ActivityIndicator,
     Dimensions,
     Platform,
     SafeAreaView,
@@ -22,7 +25,11 @@ import {
     Text,
     TouchableOpacity,
     View,
+    Image,
 } from "react-native";
+import { router } from "expo-router";
+import { supabase } from "../services/supabase";
+import { SESSION_KEY } from "../services/session";
 
 const { width, height } = Dimensions.get("window");
 const sc = (n) => (width / 390) * n;
@@ -53,6 +60,13 @@ const BOOKINGS = [
     status: "Upcoming",
     price: "₹1,149",
     address: "B-402, Skyline Residency, Ahmedabad",
+    issue: {
+      description: "Water continuously leaks from the indoor unit filter & weak air speed.",
+      images: [
+        require("../assets/images/icons/mechanic.png"),
+        require("../assets/images/icons/plumber.png")
+      ]
+    }
   },
   {
     id: "UC-98",
@@ -62,6 +76,12 @@ const BOOKINGS = [
     status: "Completed",
     price: "₹850",
     address: "B-402, Skyline Residency, Ahmedabad",
+    issue: {
+      description: "Compressor vibrates loudly and the cooling temperature is very low.",
+      images: [
+        require("../assets/images/icons/mechanic.png")
+      ]
+    }
   },
   {
     id: "UC-85",
@@ -71,107 +91,332 @@ const BOOKINGS = [
     status: "Cancelled",
     price: "₹2,100",
     address: "C-101, Green Park, Ahmedabad",
+    issue: {
+      description: "Installation of brand-new AC with 4.5m piping and mounting bracket.",
+      images: [
+        require("../assets/images/icons/mechanic.png"),
+        require("../assets/images/icons/carpenter.png")
+      ]
+    }
   },
 ];
 
+const SERVICE_PRICES = {
+  plumber: "₹499",
+  carpenter: "₹599",
+  electrician: "₹399",
+  painter: "₹999",
+  cleaner: "₹699",
+  mechanic: "₹799",
+  gardener: "₹499",
+  tailor: "₹399",
+  welder: "₹899",
+  contractor: "₹1,499",
+  laundry: "₹299",
+  security: "₹1,299",
+};
+
+const SERVICE_NAMES = {
+  plumber: "Professional Plumbing Services",
+  carpenter: "Professional Carpenter Services",
+  electrician: "Professional Electrician Services",
+  painter: "Professional Painting Services",
+  cleaner: "Professional Cleaning Services",
+  mechanic: "Professional Mechanic Services",
+  gardener: "Professional Gardening Services",
+  tailor: "Professional Tailoring Services",
+  welder: "Professional Welding Services",
+  contractor: "Professional Contractor Services",
+  laundry: "Professional Laundry Services",
+  security: "Professional Security Services",
+};
+
+const formatDateStr = (dateStr) => {
+  if (!dateStr) return "Scheduled Date";
+  try {
+    const parts = dateStr.split("-");
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      const date = new Date(year, month, day);
+      const options = { day: "numeric", month: "short", year: "numeric" };
+      return date.toLocaleDateString("en-IN", options);
+    }
+    return dateStr;
+  } catch (e) {
+    return dateStr;
+  }
+};
+
+const BOOKING_TABS = ["all", "pending", "accepted", "completed", "cancelled"];
+
+const toStatusLabel = (status) => {
+  const raw = String(status || "").toLowerCase();
+  if (raw === "rejected") return "cancelled";
+  return raw || "pending";
+};
+
+const parseImageUrls = (value) => {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (typeof value !== "string") return [];
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) return parsed.filter(Boolean);
+  } catch {}
+  return trimmed
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+};
+
 export default function BookingTabsScreen() {
-  const [activeTab, setActiveTab] = useState("Upcoming");
+  const [activeTab, setActiveTab] = useState("all");
+  const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const filteredBookings = BOOKINGS.filter((b) => b.status === activeTab);
+  useEffect(() => {
+    async function loadBookings() {
+      try {
+        setLoading(true);
+        // 1. Get client ID from session storage
+        const sessionStr = await AsyncStorage.getItem(SESSION_KEY);
+        let userId = "client_firebase_uid_123"; // Fallback client ID
+        if (sessionStr) {
+          const session = JSON.parse(sessionStr);
+          if (session && session.uid) {
+            userId = session.uid;
+          }
+        }
+        
+        // 2. Fetch bookings from Supabase table
+        const { data, error } = await supabase
+          .from("bookings")
+          .select("*")
+          .eq("client_id", userId)
+          .order("created_at", { ascending: false });
 
-  const renderBookingCard = (item) => (
-    <View key={item.id} style={s.cardWrapper}>
-      <BlurView
-        intensity={Platform.OS === "ios" ? 45 : 95}
-        tint="light"
-        style={s.glassCard}
-      >
-        <View style={s.cardHeader}>
-          <View>
-            <View style={s.idBadge}>
-              <Text style={s.orderId}>ID: {item.id}</Text>
-            </View>
-            <Text style={s.serviceTitle}>{item.service}</Text>
-          </View>
-          <Text style={s.priceText}>{item.price}</Text>
-        </View>
+        if (error) throw error;
+        
+        setBookings(data || []);
+      } catch (err) {
+        console.error("Error loading bookings from Supabase:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
 
-        <View style={s.cardBody}>
-          <View style={s.infoRow}>
-            <View style={s.iconContainer}>
-              <Calendar size={sc(14)} color={C.p2} />
-            </View>
-            <Text style={s.infoText}>{item.date}</Text>
-          </View>
-          <View style={s.infoRow}>
-            <View style={s.iconContainer}>
-              <Clock size={sc(14)} color={C.p2} />
-            </View>
-            <Text style={s.infoText}>{item.time}</Text>
-          </View>
-          <View style={s.infoRow}>
-            <View style={s.iconContainer}>
-              <MapPin size={sc(14)} color={C.p2} />
-            </View>
-            <Text style={s.infoText} numberOfLines={1}>
-              {item.address}
-            </Text>
-          </View>
-        </View>
+    loadBookings();
+  }, []);
 
-        <View style={s.cardDivider} />
+  const handleCancelBooking = async (bookingId) => {
+    try {
+      const { error } = await supabase
+        .from("bookings")
+        .update({ status: "cancelled" })
+        .eq("id", bookingId);
 
-        <View style={s.actionRow}>
-          {item.status === "Upcoming" && (
-            <>
-              <TouchableOpacity style={s.cancelBtn} activeOpacity={0.7}>
-                <Text style={s.cancelBtnText}>Cancel Booking</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={s.trackBtn} activeOpacity={0.85}>
-                <LinearGradient colors={[C.p1, C.p2]} style={s.trackGradient}>
-                  <Navigation size={sc(14)} color={C.white} fill={C.white} />
-                  <Text style={s.trackBtnText}>Track Expert</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </>
-          )}
+      if (error) throw error;
+      
+      // Update local state instantly
+      setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: "cancelled" } : b));
+      alert("Your booking has been cancelled successfully.");
+    } catch (err) {
+      console.error("Error cancelling booking:", err);
+      alert("Could not cancel booking. Please try again.");
+    }
+  };
 
-          {item.status === "Completed" && (
-            <>
-              <View style={s.statusBadgeSuccess}>
-                <CheckCircle2
-                  size={sc(14)}
-                  color="#059669"
-                  fill="rgba(5, 150, 105, 0.1)"
-                />
-                <Text style={s.statusBadgeTextSuccess}>Completed</Text>
+  const filteredBookings = bookings.filter((b) => {
+    const status = toStatusLabel(b.status);
+    if (activeTab === "all") return true;
+    return status === activeTab;
+  });
+
+  const renderBookingCard = (item) => {
+    const serviceName = SERVICE_NAMES[item.service_type] || (item.service_type ? item.service_type.charAt(0).toUpperCase() + item.service_type.slice(1) + " Service" : "On-Demand Home Service");
+    const priceText = SERVICE_PRICES[item.service_type] || "₹499";
+    const displayDate = formatDateStr(item.scheduled_date);
+    const displayAddress = "Address shared by client";
+    const statusVal = toStatusLabel(item.status);
+    const imageUrls = parseImageUrls(item.image_url);
+
+    return (
+      <View key={item.id} style={s.cardWrapper}>
+        <BlurView
+          intensity={Platform.OS === "ios" ? 45 : 95}
+          tint="light"
+          style={s.glassCard}
+        >
+          <View style={s.cardHeader}>
+            <View>
+              <View style={s.idBadge}>
+                <Text style={s.orderId}>ID: UC-{item.id}</Text>
               </View>
-              <TouchableOpacity style={s.rebookBtn} activeOpacity={0.7}>
-                <RotateCcw size={sc(14)} color={C.p2} />
-                <Text style={s.rebookBtnText}>Rebook Service</Text>
-              </TouchableOpacity>
-            </>
-          )}
+              <Text style={s.serviceTitle}>{serviceName}</Text>
+            </View>
+            <Text style={s.priceText}>{priceText}</Text>
+          </View>
 
-          {item.status === "Cancelled" && (
-            <>
-              <View style={s.statusBadgeError}>
-                <XCircle
-                  size={sc(14)}
-                  color="#DC2626"
-                  fill="rgba(220, 38, 38, 0.1)"
-                />
-                <Text style={s.statusBadgeTextError}>Cancelled</Text>
+          <View style={s.cardBody}>
+            <View style={s.infoRow}>
+              <View style={s.iconContainer}>
+                <Calendar size={sc(14)} color={C.p2} />
               </View>
-              <TouchableOpacity style={s.rebookBtn} activeOpacity={0.7}>
-                <Text style={s.rebookBtnText}>Try Again</Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-      </BlurView>
-    </View>
-  );
+              <Text style={s.infoText}>{displayDate}</Text>
+            </View>
+            <View style={s.infoRow}>
+              <View style={s.iconContainer}>
+                <Clock size={sc(14)} color={C.p2} />
+              </View>
+              <Text style={s.infoText}>{item.scheduled_time}</Text>
+            </View>
+            <View style={s.infoRow}>
+              <View style={s.iconContainer}>
+                <MapPin size={sc(14)} color={C.p2} />
+              </View>
+              <Text style={s.infoText} numberOfLines={1}>
+                {displayAddress}
+              </Text>
+            </View>
+
+            {/* CLIENT REPORTED ISSUE WITH THUMBNAIL */}
+            {item.notes && (
+              <View style={s.issueContainer}>
+                <View style={s.issueTextCol}>
+                  <Text style={s.issueHeader}>⚠️ CLIENT REPORTED ISSUE</Text>
+                  <Text style={s.issueDesc} numberOfLines={3}>
+                    {item.notes}
+                  </Text>
+                </View>
+                {imageUrls.length > 0 && (
+                  <View style={s.issueImagesRow}>
+                    {imageUrls.map((uri, idx) => (
+                      <Image
+                        key={`${item.id}-img-${idx}`}
+                        source={{ uri }}
+                        style={s.issueThumb}
+                        resizeMode="cover"
+                      />
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+
+          <View style={s.cardDivider} />
+
+          {/* PROMINENT ACTION LINK TO INVOICE SCREEN */}
+          <TouchableOpacity 
+            style={s.invoiceRedirectBtn} 
+            activeOpacity={0.8}
+            onPress={() => router.push("/booking-invoice")}
+          >
+            <View style={s.invoiceRedirectLeft}>
+              <Text style={s.invoiceRedirectTxt}>Take me to Booking & Invoice Screen 🧾</Text>
+            </View>
+            <ChevronRight size={14} color={C.p2} strokeWidth={2.5} />
+          </TouchableOpacity>
+
+          <View style={s.actionRow}>
+            {(statusVal === "pending" || statusVal === "accepted") && (
+              <>
+                <TouchableOpacity 
+                  style={s.cancelBtn} 
+                  activeOpacity={0.7}
+                  onPress={() => handleCancelBooking(item.id)}
+                >
+                  <Text style={s.cancelBtnText}>Cancel Booking</Text>
+                </TouchableOpacity>
+                {statusVal === "accepted" && item.professional_id ? (
+                  <TouchableOpacity
+                    style={s.trackBtn}
+                    activeOpacity={0.85}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/chat",
+                        params: { bookingId: String(item.id) },
+                      })
+                    }
+                  >
+                    <LinearGradient colors={[C.p1, C.p2]} style={s.trackGradient}>
+                      <Text style={s.trackBtnText}>Chat with Professional</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity style={s.trackBtn} activeOpacity={0.85}>
+                    <LinearGradient colors={[C.p1, C.p2]} style={s.trackGradient}>
+                      <Navigation size={sc(14)} color={C.white} fill={C.white} />
+                      <Text style={s.trackBtnText}>Track Expert</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
+
+            {statusVal === "completed" && (
+              <>
+                <View style={s.statusBadgeSuccess}>
+                  <CheckCircle2
+                    size={sc(14)}
+                    color="#059669"
+                    fill="rgba(5, 150, 105, 0.1)"
+                  />
+                  <Text style={s.statusBadgeTextSuccess}>Completed</Text>
+                </View>
+                <TouchableOpacity 
+                  style={s.rebookBtn} 
+                  activeOpacity={0.7}
+                  onPress={() => router.push("/booking-invoice")}
+                >
+                  <RotateCcw size={sc(14)} color={C.p2} />
+                  <Text style={s.rebookBtnText}>Rebook Service</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {statusVal === "cancelled" && (
+              <>
+                <View style={s.statusBadgeError}>
+                  <XCircle
+                    size={sc(14)}
+                    color="#DC2626"
+                    fill="rgba(220, 38, 38, 0.1)"
+                  />
+                  <Text style={s.statusBadgeTextError}>Cancelled</Text>
+                </View>
+                <TouchableOpacity 
+                  style={s.rebookBtn} 
+                  activeOpacity={0.7}
+                  onPress={() => router.push("/booking-invoice")}
+                >
+                  <Text style={s.rebookBtnText}>Try Again</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </BlurView>
+      </View>
+    );
+  };
+
+  if (loading) {
+    return (
+      <View style={[s.container, { justifyContent: "center", alignItems: "center" }]}>
+        <StatusBar barStyle="dark-content" />
+        <LinearGradient
+          colors={["#F4F3FF", "#FDFDFF"]}
+          style={StyleSheet.absoluteFill}
+        />
+        <ActivityIndicator size="large" color={C.p2} />
+        <Text style={{ marginTop: 12, color: C.p2, fontWeight: "700" }}>Loading real-time bookings...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={s.container}>
@@ -215,7 +460,7 @@ export default function BookingTabsScreen() {
         {/* TOP TABS CONTROL */}
         <View style={s.tabBarContainer}>
           <View style={s.tabBarBackground}>
-            {["Upcoming", "Completed", "Cancelled"].map((tab) => {
+            {BOOKING_TABS.map((tab) => {
               const isActive = activeTab === tab;
               return (
                 <TouchableOpacity
@@ -225,7 +470,7 @@ export default function BookingTabsScreen() {
                   style={[s.tabItem, isActive && s.tabItemActive]}
                 >
                   <Text style={[s.tabText, isActive && s.tabTextActive]}>
-                    {tab}
+                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
                   </Text>
                 </TouchableOpacity>
               );
@@ -295,7 +540,7 @@ const s = StyleSheet.create({
     elevation: 1,
   },
 
-  // Custom Smooth Tab Bar
+  // Custom Tab Bar
   tabBarContainer: { paddingHorizontal: 24, marginBottom: 15 },
   tabBarBackground: {
     flexDirection: "row",
@@ -389,10 +634,74 @@ const s = StyleSheet.create({
     opacity: 0.8,
   },
 
+  // Issue Box Style
+  issueContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(91, 76, 240, 0.05)",
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(91, 76, 240, 0.1)",
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  issueTextCol: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  issueHeader: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: C.p2,
+    marginBottom: 3,
+    letterSpacing: 0.3,
+  },
+  issueDesc: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: C.textDark,
+    lineHeight: 16,
+  },
+  issueImagesRow: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  issueThumb: {
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: C.white,
+    backgroundColor: C.white,
+  },
+
   cardDivider: {
     height: 1,
     backgroundColor: "rgba(232, 229, 255, 0.8)",
     marginBottom: 16,
+  },
+
+  // Invoice Redirect Button
+  invoiceRedirectBtn: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "rgba(91, 76, 240, 0.08)",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(91, 76, 240, 0.15)",
+    marginBottom: 16,
+  },
+  invoiceRedirectLeft: {
+    flex: 1,
+  },
+  invoiceRedirectTxt: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: C.p2,
   },
 
   // Action Configurations
@@ -442,7 +751,7 @@ const s = StyleSheet.create({
   },
   rebookBtnText: { color: C.p2, fontWeight: "800", fontSize: sc(12) },
 
-  // Semantic Badges
+  // Badges
   statusBadgeSuccess: {
     flexDirection: "row",
     alignItems: "center",
@@ -476,7 +785,7 @@ const s = StyleSheet.create({
     fontSize: sc(11),
   },
 
-  // Polished Empty State UI
+  // Empty State UI
   emptyState: {
     paddingVertical: height * 0.12,
     alignItems: "center",
