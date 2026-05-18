@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -14,6 +14,9 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
+import { useLocalSearchParams, router } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { supabase } from "../services/supabase";
 import AppBottomTab from "../components/AppBottomTab";
 import {
   X,
@@ -44,10 +47,30 @@ const C = {
 };
 
 export default function ReviewScreenFlow() {
+  const { bookingId, amountPaid } = useLocalSearchParams();
   const [step, setStep] = useState(1); // 1: Tip, 2: Rating, 3: Private
   const [selectedTip, setSelectedTip] = useState("₹50");
   const [rating, setRating] = useState(0);
   const [match, setMatch] = useState("No opinion");
+  const [feedbackText, setFeedbackText] = useState("");
+  const [proDetails, setProDetails] = useState({ name: "Loading...", service: "Service", avatar: "https://i.pravatar.cc/150?u=pro" });
+  const [professionalId, setProfessionalId] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    async function fetchDetails() {
+      if (!bookingId) return;
+      const { data: booking } = await supabase.from("bookings").select("professional_id, service_type").eq("id", bookingId).single();
+      if (booking?.professional_id) {
+        setProfessionalId(booking.professional_id);
+        const { data: profile } = await supabase.from("professional_profiles").select("full_name").eq("user_id", booking.professional_id).single();
+        if (profile) {
+          setProDetails({ name: profile.full_name, service: booking.service_type, avatar: `https://i.pravatar.cc/150?u=${booking.professional_id}` });
+        }
+      }
+    }
+    fetchDetails();
+  }, [bookingId]);
 
   const tips = [
     { label: "No Tip", val: "₹0" },
@@ -56,7 +79,65 @@ export default function ReviewScreenFlow() {
     { label: "₹100", val: "Hero" },
   ];
 
-  // ─── STEP RENDERERS ────────────────────────────────────────
+  const handleSubmitReview = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      if (!bookingId || !professionalId) {
+        alert("Missing booking details");
+        setSubmitting(false);
+        return;
+      }
+
+      const sessionStr = await AsyncStorage.getItem("workmate_session");
+      let clientId = "client_firebase_uid_123";
+      if (sessionStr) {
+        const session = JSON.parse(sessionStr);
+        if (session?.uid) clientId = session.uid;
+      }
+
+      const safeRating = rating > 0 ? rating : 5;
+
+      await supabase.from("reviews").insert({
+        booking_id: parseInt(bookingId, 10),
+        professional_id: professionalId,
+        client_id: clientId,
+        rating: safeRating,
+        review_text: feedbackText
+      });
+
+      const { data: profile } = await supabase
+        .from("professional_profiles")
+        .select("total_earnings, average_rating, review_count")
+        .eq("user_id", professionalId)
+        .single();
+
+      if (profile) {
+        const currentEarnings = Number(profile.total_earnings || 0);
+        const currentRating = Number(profile.average_rating || 0);
+        const currentCount = Number(profile.review_count || 0);
+
+        const tipVal = parseInt(selectedTip.replace(/[^0-9]/g, ""), 10) || 0;
+        const finalEarnings = currentEarnings + Number(amountPaid || 0) + tipVal;
+
+        const newCount = currentCount + 1;
+        const newRating = ((currentRating * currentCount) + safeRating) / newCount;
+
+        await supabase.from("professional_profiles").update({
+          total_earnings: finalEarnings,
+          average_rating: newRating,
+          review_count: newCount
+        }).eq("user_id", professionalId);
+      }
+
+      alert("Feedback Submitted! Thank you.");
+      router.replace("/home");
+    } catch (e) {
+      console.error(e);
+      alert("Error submitting review");
+      setSubmitting(false);
+    }
+  };
 
   const renderStep1 = () => (
     <View style={s.stepWrap}>
@@ -136,12 +217,14 @@ export default function ReviewScreenFlow() {
           placeholder="Anything else you'd like us to know?"
           placeholderTextColor={C.textMuted}
           multiline
+          value={feedbackText}
+          onChangeText={setFeedbackText}
           style={s.textInput}
         />
       </View>
-      <TouchableOpacity style={s.mainBtn} onPress={() => alert("Feedback Submitted!")}>
+      <TouchableOpacity style={s.mainBtn} onPress={handleSubmitReview} disabled={submitting}>
         <LinearGradient colors={[C.p1, C.p2]} style={s.btnGradient}>
-          <Text style={s.btnText}>Submit Review</Text>
+          <Text style={s.btnText}>{submitting ? "Submitting..." : "Submit Review"}</Text>
         </LinearGradient>
       </TouchableOpacity>
     </View>
@@ -157,7 +240,7 @@ export default function ReviewScreenFlow() {
 
       <SafeAreaView style={{ flex: 1 }}>
         <View style={s.header}>
-          <TouchableOpacity style={s.closeBtn} onPress={() => step > 1 ? setStep(step-1) : null}>
+          <TouchableOpacity style={s.closeBtn} onPress={() => step > 1 ? setStep(step-1) : router.replace("/home")}>
             <X size={24} color={C.white} />
           </TouchableOpacity>
           <Text style={s.headerTitle}>Review Flow</Text>
@@ -169,11 +252,11 @@ export default function ReviewScreenFlow() {
             {/* Header Profile Area (Constant) */}
             <View style={s.profileHeader}>
               <View style={s.avatarWrap}>
-                <Image source={{ uri: 'https://i.pravatar.cc/150?u=ac-expert' }} style={s.avatar} />
+                <Image source={{ uri: proDetails.avatar }} style={s.avatar} />
                 <View style={s.verifiedBadge}><CheckCircle2 size={14} color={C.white} fill={C.p2} /></View>
               </View>
-              <Text style={s.proName}>Rahul Sharma</Text>
-              <Text style={s.proService}>AC Repair Expert</Text>
+              <Text style={s.proName}>{proDetails.name}</Text>
+              <Text style={s.proService}>{proDetails.service}</Text>
             </View>
 
             {/* Steps */}

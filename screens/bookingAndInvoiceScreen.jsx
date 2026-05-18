@@ -16,7 +16,7 @@ import {
   View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SESSION_KEY } from "../services/session";
 import {
@@ -35,11 +35,12 @@ const C = {
   // Purples
   P: "#4A3AFF",
   P2: "#7B6FFF",
-  P3: "#EDEAFF",
+  P3: "#bfb3ff",
   P4: "#F7F6FF",
+  // keep lowercase aliases because UI uses C.p1/C.p2/C.p3/C.p4 everywhere
   p1: "#4A3AFF",
   p2: "#7B6FFF",
-  p3: "#EDEAFF",
+  p3: "#bfb3ff",
   p4: "#F7F6FF",
   // Glass
   glass: "rgba(255,255,255,0.07)",
@@ -60,8 +61,8 @@ const C = {
   rose: "#FB7185",
   sky: "#38BDF8",
   // Background blobs
-  bg1: "#0D0A1E",
-  bg2: "#130D2E",
+  bg1: "#F3F4FF",
+  bg2: "#dadada",
 };
 
 // ─── BACKGROUND ORBS (static decoration) ─────────────────────
@@ -238,6 +239,33 @@ const SERVICE_COLORS = {
 };
 
 const parsePrice = (str) => parseInt((str || "0").replace(/[^0-9]/g, ""), 10) || 0;
+const normalizeServiceType = (rawType) => {
+  const key = String(rawType || "").trim().toLowerCase().replace(/\s+/g, "");
+  const aliases = {
+    plumber: "plumber",
+    plumbing: "plumber",
+    electrician: "electrician",
+    electric: "electrician",
+    electrical: "electrician",
+    electerician: "electrician",
+    carpenter: "carpenter",
+    carpentry: "carpenter",
+    painter: "painter",
+    painting: "painter",
+    cleaner: "cleaner",
+    cleaning: "cleaner",
+    welder: "welder",
+    welding: "welder",
+    security: "security",
+    tailor: "tailor",
+    tailoring: "tailor",
+    mechanic: "mechanic",
+    gardener: "gardener",
+    gardening: "gardener",
+    laundry: "laundry",
+  };
+  return aliases[key] || "plumber";
+};
 const parseImageUrls = (value) => {
   if (!value) return [];
   if (Array.isArray(value)) return value.filter(Boolean);
@@ -1221,11 +1249,11 @@ const ReviewOrder = ({ serviceType = "plumber", scheduleInfo, detailsInfo, onBac
 // ROOT — FULL 3-SCREEN FLOW
 // ══════════════════════════════════════════════════════════════
 export default function FullBookingFlow() {
+  const { serviceType: serviceTypeParam } = useLocalSearchParams();
   const [screen, setScreen] = useState(0);
   const [scheduleInfo, setScheduleInfo] = useState(null);
   const [detailsInfo, setDetailsInfo] = useState(null);
-
-  const serviceType = "plumber"; // pass from navigation params in your app
+  const serviceType = normalizeServiceType(serviceTypeParam);
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg1 }}>

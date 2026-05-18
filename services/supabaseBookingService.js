@@ -239,6 +239,27 @@ export async function fetchBookingById(bookingId) {
 }
 
 /**
+ * Fetch latest bookings for a client.
+ *
+ * @param {string} clientId
+ * @param {number} limit
+ * @returns {Promise<Array>}
+ */
+export async function fetchClientBookings(clientId, limit = 5) {
+  if (!clientId) return [];
+
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("*")
+    .eq("client_id", clientId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) throw error;
+  return data || [];
+}
+
+/**
  * Write booking lifecycle log into Supabase table `booking_logs`.
  * Expected columns:
  * - id (identity pk)

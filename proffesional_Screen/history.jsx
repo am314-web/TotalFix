@@ -101,6 +101,7 @@ export default function ProHistoryScreen() {
         }
       } catch (error) {
         console.error("History fetch failed:", error);
+        import('react-native').then(rn => rn.Alert.alert("History Error", error?.message || JSON.stringify(error)));
         if (mounted) setJobs([]);
       } finally {
         if (mounted) setLoading(false);
@@ -215,7 +216,15 @@ export default function ProHistoryScreen() {
               <TouchableOpacity
                 style={s.startBtn}
                 activeOpacity={0.8}
-                onPress={() => router.push("/pro-profile")}
+                onPress={() =>
+                  router.push({
+                    pathname: "/pro-job-execution",
+                    params: {
+                      jobId: String(job.id),
+                      customerName: job.clientName || job.customer_name || "Customer",
+                    },
+                  })
+                }
               >
                 <Play size={14} color="#fff" />
                 <Text style={s.startBtnText}>Start Job</Text>

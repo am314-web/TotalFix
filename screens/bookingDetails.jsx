@@ -314,7 +314,7 @@ export default function BookingTabsScreen() {
           <TouchableOpacity 
             style={s.invoiceRedirectBtn} 
             activeOpacity={0.8}
-            onPress={() => router.push("/booking-invoice")}
+            onPress={() => router.push({ pathname: "/client-invoice", params: { bookingId: item.id } })}
           >
             <View style={s.invoiceRedirectLeft}>
               <Text style={s.invoiceRedirectTxt}>Take me to Booking & Invoice Screen 🧾</Text>
@@ -371,7 +371,7 @@ export default function BookingTabsScreen() {
                 <TouchableOpacity 
                   style={s.rebookBtn} 
                   activeOpacity={0.7}
-                  onPress={() => router.push("/booking-invoice")}
+                  onPress={() => router.push({ pathname: "/client-invoice", params: { bookingId: item.id } })}
                 >
                   <RotateCcw size={sc(14)} color={C.p2} />
                   <Text style={s.rebookBtnText}>Rebook Service</Text>
@@ -392,7 +392,7 @@ export default function BookingTabsScreen() {
                 <TouchableOpacity 
                   style={s.rebookBtn} 
                   activeOpacity={0.7}
-                  onPress={() => router.push("/booking-invoice")}
+                  onPress={() => router.push({ pathname: "/client-invoice", params: { bookingId: item.id } })}
                 >
                   <Text style={s.rebookBtnText}>Try Again</Text>
                 </TouchableOpacity>

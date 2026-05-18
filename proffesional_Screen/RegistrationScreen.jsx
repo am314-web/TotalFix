@@ -77,7 +77,7 @@ export default function ProfessionalRegisterScreen() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [experience, setExperience] = useState("");
-  const [selectedService, setSelectedService] = useState("AC Repair");
+  const [selectedService, setSelectedService] = useState("Plumbing");
 
   // Document Upload Mock States
   const [aadhaarStatus, setAadhaarStatus] = useState("empty"); // empty, uploading, done
@@ -87,11 +87,17 @@ export default function ProfessionalRegisterScreen() {
   const [sessionUserId, setSessionUserId] = useState("");
 
   const servicesList = [
-    "AC Repair",
     "Plumbing",
     "Electrical",
-    "Cleaning",
+    "Carpentry",
     "Painting",
+    "Cleaning",
+    "Welding",
+    "Security",
+    "Tailoring",
+    "Mechanic",
+    "Gardening",
+    "Laundry",
   ];
 
   const handleLogout = async () => {

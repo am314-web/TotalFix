@@ -48,7 +48,7 @@ function TabBtn({ tab, active }) {
   const Icon = tab.icon;
   return (
     <TouchableOpacity style={s.tabBtn} onPress={() => router.push(tab.route)}>
-      <Icon size={22} color={active ? P : "#CBD5E1"} strokeWidth={active ? 2.5 : 1.8} />
+      <Icon size={22} color={active ? P : "#667085"} strokeWidth={active ? 2.5 : 1.8} />
       <Text style={[s.tabLabel, active && { color: P }]}>{tab.label}</Text>
     </TouchableOpacity>
   );
@@ -73,6 +73,12 @@ const s = StyleSheet.create({
     paddingHorizontal: 8,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.8)",
+    backgroundColor: "rgba(255,255,255,0.92)",
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 6,
   },
   tabBtn: {
     flex: 1,
@@ -84,7 +90,7 @@ const s = StyleSheet.create({
   tabLabel: {
     fontSize: 9.5,
     fontWeight: "600",
-    color: "#CBD5E1",
+    color: "#667085",
     letterSpacing: 0.2,
   },
   tabCenter: {
@@ -104,4 +110,3 @@ const s = StyleSheet.create({
   },
   tabCenterGrad: { flex: 1, alignItems: "center", justifyContent: "center" },
 });
-

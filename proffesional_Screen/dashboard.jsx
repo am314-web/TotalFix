@@ -82,6 +82,11 @@ export default function ProWorkerDashboard() {
   const [proUserId, setProUserId] = useState("");
   const [selectedJob, setSelectedJob] = useState(null);
   const [actionLoadingId, setActionLoadingId] = useState("");
+
+  const [earnings, setEarnings] = useState(0);
+  const [avgRating, setAvgRating] = useState(0);
+  const [completedCount, setCompletedCount] = useState(0);
+
   const getPrimaryImageUrl = (rawValue) => {
     if (!rawValue) return "";
     if (Array.isArray(rawValue)) return rawValue[0] || "";
@@ -152,6 +157,18 @@ export default function ProWorkerDashboard() {
 
         if (profileData?.name) setProName(profileData.name);
         const proTypeKey = toServiceKey(profileData?.service_type);
+
+        const { data: proStats } = await supabase
+          .from("professional_profiles")
+          .select("total_earnings, average_rating, review_count")
+          .eq("user_id", userId)
+          .maybeSingle();
+
+        if (proStats) {
+          setEarnings(Number(proStats.total_earnings) || 0);
+          setAvgRating(Number(proStats.average_rating) || 0);
+          setCompletedCount(Number(proStats.review_count) || 0);
+        }
 
         const { data: bookingsData, error: bookingsError } = await supabase
           .from("bookings")
@@ -290,12 +307,12 @@ export default function ProWorkerDashboard() {
             <BlurView intensity={Platform.OS === 'ios' ? 50 : 95} tint="light" style={s.metricsGlassCard}>
               <View style={s.earningsHeaderRow}>
                 <View>
-                  <Text style={s.earningsLabel}>Today's Earnings</Text>
-                  <Text style={s.earningsValue}>₹3,498.00</Text>
+                  <Text style={s.earningsLabel}>Total Earnings</Text>
+                  <Text style={s.earningsValue}>₹{Number(earnings).toLocaleString('en-IN')}</Text>
                 </View>
                 <View style={s.trendBadge}>
                   <TrendingUp size={sc(12)} color={C.success} style={{ marginRight: 4 }} />
-                  <Text style={s.trendText}>+12%</Text>
+                  <Text style={s.trendText}>Live</Text>
                 </View>
               </View>
               
@@ -304,13 +321,13 @@ export default function ProWorkerDashboard() {
               <View style={s.subStatsGrid}>
                 <View style={s.subStatItem}>
                   <View style={s.miniStatIconBox}><CheckCircle2 size={14} color={C.p2} /></View>
-                  <Text style={s.subStatVal}>2 / 3</Text>
-                  <Text style={s.subStatLabel}>Jobs Completed</Text>
+                  <Text style={s.subStatVal}>{completedCount}</Text>
+                  <Text style={s.subStatLabel}>Jobs Rated</Text>
                 </View>
                 <View style={s.verticalDivider} />
                 <View style={s.subStatItem}>
                   <View style={s.miniStatIconBox}><Sparkles size={14} color="#F59E0B" fill="rgba(245,158,11,0.1)" /></View>
-                  <Text style={s.subStatVal}>4.9 ★</Text>
+                  <Text style={s.subStatVal}>{Number(avgRating).toFixed(1)} ★</Text>
                   <Text style={s.subStatLabel}>Avg Rating</Text>
                 </View>
               </View>

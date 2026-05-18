@@ -1,6 +1,7 @@
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
     Bell,
     Calendar,
@@ -15,7 +16,7 @@ import {
     Wallet,
     Zap
 } from "lucide-react-native";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
     Dimensions,
     Image,
@@ -29,6 +30,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AppBottomTab from "../components/AppBottomTab";
+import { SESSION_KEY } from "../services/session";
+import { fetchClientBookings } from "../services/supabaseBookingService";
 
 const { width } = Dimensions.get("window");
 const P = "#4A3AFF";
@@ -222,31 +225,86 @@ const PLANS = [
   },
 ];
 
-const RECENTS = [
-  {
-    iconSource: require("../assets/images/icons/laundary.png"),
-    iconBg: "#ECFDF5",
-    name: "Full Home Deep Cleaning",
-    meta: "Yesterday · 3 hrs · ₹1,299",
-    status: "Done",
-    statusBg: "#ECFDF5",
-    statusColor: "#059669",
-  },
-  {
-    iconSource: require("../assets/images/icons/mechanic.png"),
-    iconBg: "#FFF7ED",
-    name: "AC Servicing + Gas Refill",
-    meta: "Today, 3:00 PM · ₹799",
-    status: "Active",
-    statusBg: "#FFF7ED",
-    statusColor: "#EA580C",
-  },
-];
+const BOOKING_STATUS_UI = {
+  pending: { label: "Pending", bg: "#FFF7ED", color: "#EA580C" },
+  accepted: { label: "Accepted", bg: "#EEF2FF", color: "#4338CA" },
+  rejected: { label: "Rejected", bg: "#FEF2F2", color: "#DC2626" },
+  completed: { label: "Done", bg: "#ECFDF5", color: "#059669" },
+};
 
-// ─── MAIN APP ────────────────────────────────────────────────────────────────
+const getRecentBookingUI = (serviceType) => {
+  const key = String(serviceType || "").toLowerCase().trim();
+  if (key === "electrician") {
+    return { name: "Electrical Service", iconSource: require("../assets/images/icons/electrician.png"), iconBg: "#FFF7ED" };
+  }
+  if (key === "painter") {
+    return { name: "Painting Service", iconSource: require("../assets/images/icons/painter.png"), iconBg: "#FDF2F8" };
+  }
+  if (key === "mechanic") {
+    return { name: "Mechanic Service", iconSource: require("../assets/images/icons/mechanic.png"), iconBg: "#FFF7ED" };
+  }
+  if (key === "cleaner" || key === "laundry") {
+    return { name: key === "laundry" ? "Laundry Service" : "Cleaning Service", iconSource: require("../assets/images/icons/laundary.png"), iconBg: "#ECFEFF" };
+  }
+  if (key === "carpenter") {
+    return { name: "Carpentry Service", iconSource: require("../assets/images/icons/carpenter.png"), iconBg: "#FFF1F2" };
+  }
+  return { name: "Plumbing Service", iconSource: require("../assets/images/icons/plumber.png"), iconBg: "#EFF6FF" };
+};
+
+// --- MAIN APP ────────────────────────────────────────────────────────────────
 
 export default function App() {
   const [activeCat, setActiveCat] = useState(0);
+  const [recentBookings, setRecentBookings] = useState([]);
+  const [clientName, setClientName] = useState("User");
+
+  useEffect(() => {
+    const loadRecentBookings = async () => {
+      try {
+        const rawSession = await AsyncStorage.getItem(SESSION_KEY);
+        const session = rawSession ? JSON.parse(rawSession) : null;
+        const clientId = session?.uid || "";
+        const sessionName =
+          session?.fullName ||
+          session?.name ||
+          (session?.email ? String(session.email).split("@")[0] : "");
+        setClientName(sessionName || "User");
+        if (!clientId) return setRecentBookings([]);
+
+        const bookings = await fetchClientBookings(clientId, 5);
+        const mapped = bookings.map((booking) => {
+          const ui = getRecentBookingUI(booking.service_type);
+          const statusUi =
+            BOOKING_STATUS_UI[String(booking.status || "pending").toLowerCase()] ||
+            BOOKING_STATUS_UI.pending;
+          const dateText = booking.scheduled_date
+            ? new Date(booking.scheduled_date).toLocaleDateString()
+            : "Scheduled";
+          const timeText = booking.scheduled_time || "Time TBD";
+
+          return {
+            id: String(booking.id),
+            serviceKey: String(booking.service_type || "plumber").toLowerCase(),
+            iconSource: ui.iconSource,
+            iconBg: ui.iconBg,
+            name: ui.name,
+            meta: `${dateText} · ${timeText}`,
+            status: statusUi.label,
+            statusBg: statusUi.bg,
+            statusColor: statusUi.color,
+          };
+        });
+        setRecentBookings(mapped);
+      } catch (error) {
+        console.error("Failed to load recent bookings:", error);
+        setClientName("User");
+        setRecentBookings([]);
+      }
+    };
+
+    loadRecentBookings();
+  }, []);
 
   return (
     <SafeAreaView style={s.safe}>
@@ -256,6 +314,8 @@ export default function App() {
         activeCat={activeCat}
         setActiveCat={setActiveCat}
         onExplore={() => router.push("/categories")}
+        recentBookings={recentBookings}
+        clientName={clientName}
       />
 
       <AppBottomTab />
@@ -265,7 +325,7 @@ export default function App() {
 
 // ─── HOME SCREEN ─────────────────────────────────────────────────────────────
 
-const HomeScreen = ({ activeCat, setActiveCat, onExplore }) => (
+const HomeScreen = ({ activeCat, setActiveCat, onExplore, recentBookings, clientName }) => (
   <ScrollView
     showsVerticalScrollIndicator={false}
     contentContainerStyle={{ paddingBottom: 110 }}
@@ -279,7 +339,7 @@ const HomeScreen = ({ activeCat, setActiveCat, onExplore }) => (
           <ChevronRight size={12} color={SUB} />
         </TouchableOpacity>
         <Text style={s.greeting}>
-          Good Evening, <Text style={{ color: P }}>Jakob</Text> 👋
+          Good Evening, <Text style={{ color: P }}>{clientName}</Text> 👋
         </Text>
       </View>
       <View style={{ flexDirection: "row", gap: 8 }}>
@@ -528,13 +588,23 @@ const HomeScreen = ({ activeCat, setActiveCat, onExplore }) => (
     {/* RECENT BOOKINGS */}
     <SectionHeader title="Recent Bookings" link="View All →" />
     <View style={{ paddingHorizontal: 20, gap: 10 }}>
-      {RECENTS.map((r, i) => (
+      {recentBookings.length === 0 ? (
+        <View style={s.recCard}>
+          <View style={[s.recIcon, { backgroundColor: "#EEF2FF" }]}>
+            <Calendar size={20} color={P} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.recName}>No recent bookings yet</Text>
+            <Text style={s.recMeta}>Your booked services will appear here.</Text>
+          </View>
+        </View>
+      ) : recentBookings.map((r, i) => (
         <TouchableOpacity
-          key={i}
+          key={r.id || i}
           style={s.recCard}
           activeOpacity={0.85}
           onPress={() => {
-            const serviceKey = mapToServiceKey(r.name);
+            const serviceKey = r.serviceKey || mapToServiceKey(r.name);
             router.push({ pathname: "/service-detail", params: { service: serviceKey } });
           }}
         >
@@ -1367,3 +1437,4 @@ const s = StyleSheet.create({
   },
   tabCenterGrad: { flex: 1, alignItems: "center", justifyContent: "center" },
 });
+
